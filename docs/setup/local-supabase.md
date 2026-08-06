@@ -7,6 +7,8 @@
 
 这份 runbook 在 Windows 11 + Docker Desktop 主机上把自托管的 Supabase 栈拉起来。写成**手动流程**,因为上次自动化会话卡在了一个 Docker daemon 上 —— 多次 `docker compose pull` 后,daemon 不再响应任何 CLI 命令;让人手介入比让脚本盲目重试更可靠。
 
+> **本 runbook 假定运行终端是 PowerShell**(Windows PowerShell 5.1 或 PowerShell 7+ 都行)。所有命令已转写为 PowerShell 原生语法,`grep`/`wc`/`sleep`/`curl`/`date +%s` 等 Unix 工具替换为 PowerShell 等价命令。HTTP 探测用 Windows 自带的 `curl.exe`(Windows 10 1803+ 已带)。
+
 ---
 
 ## §0. 当前状态(已经做到哪)
@@ -34,47 +36,65 @@
 
 ## §1. 起飞前自检(5 min)
 
-打开一个新终端(PowerShell 或 Git Bash 都行;runbook 用 Git Bash 风格,但命令是等效的)。
+打开 PowerShell(PowerShell 5.1 或 7+ 都行)。如果用 Windows Terminal,选 PowerShell profile。
+
+> **不要**对 `supabase-local/` 做 `git pull` —— 本手册依赖 Aug 4 commit `1123a748`,pull 会破坏镜像 tag 与 §6 一致。
 
 ### 1a. Daemon 响应
 
-```bash
+```powershell
 docker version --format 'Client:{{.Client.Version}} Server:{{.Server.Version}}'
 ```
+
+`docker` CLI 在任何 shell 下都接受 Go template,这行跨 shell 通用 —— `{{...}}` 由 docker 自己解析,不会跟 PowerShell 的 `$` 变量冲突。
 
 **预期:** `Client:29.6.2 Server:29.6.2`。如果挂死超过 30 秒,或报 `Cannot connect to the Docker daemon`,daemon 已经卡死 —— 跳到 **§7.1 daemon hang recovery** 再继续。
 
 ### 1b. 镜像源已注册
 
-```bash
-docker info 2>&1 | grep -A 2 -i 'registry mirrors'
+```powershell
+docker info 2>&1 | Select-String -Pattern 'Registry Mirrors' -Context 2,2
 ```
 
-**预期:**
+**预期输出片段:**
 
 ```
-Registry Mirrors:
- https://docker.m.daocloud.io/
+   ...
+>  Registry Mirrors:
+     https://docker.m.daocloud.io/
+   ...
 ```
+
+`-Context 2,2` 让 Select-String 在匹配行前后各多打 2 行,刚好覆盖 mirror 列表。
 
 如果没这行,跳到 **§7.2 镜像源未注册**。
 
 ### 1c. 端口空闲
 
-```bash
-powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess' 2>&1
+```powershell
+Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess
 ```
 
 **预期:** 空输出。如果有端口已被占用,占用进程 —— 记下 PID,在 `up -d` 之前先释放它。
 
 ### 1d. Supabase 工作目录
 
-```bash
-cd d:/myworkspace/claude-workspace/supabase-local/docker
-ls docker-compose.yml
+```powershell
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
+Get-ChildItem docker-compose.yml
 ```
 
-**预期:** 文件存在。如果不存在,clone 被挪走了 —— 回到你的 clone 位置。
+**预期:** `docker-compose.yml` 文件名显示出来。如果不存在,clone 被挪走了 —— 回到你的 clone 位置。
+
+> **不要 `git pull` 这个仓库** —— 本手册锁了 Aug 4 commit,任何 pull 都会改变镜像 tag 钉死点。
+
+### 1e. 端到端烟雾测试(可选但推荐)
+
+```powershell
+docker run --rm hello-world
+```
+
+**预期:** 输出 `Hello from Docker!`。这是 daemon + WSL + 网络栈 全链路 OK 的最简验证。
 
 ---
 
@@ -84,8 +104,8 @@ ls docker-compose.yml
 
 ### 2a. 拉
 
-```bash
-cd d:/myworkspace/claude-workspace/supabase-local/docker
+```powershell
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
 docker compose pull
 ```
 
@@ -98,20 +118,22 @@ docker compose pull
 
 ### 2b. 验证缓存
 
-```bash
-docker images --format '{{.Repository}}:{{.Tag}}' | wc -l
-docker images --format '{{.Repository}}:{{.Tag}}' | grep -cE 'supabase|kong|postgres|gotrue|postgrest|realtime|storage|studio|imgproxy|edge|meta|supavisor|inbucket|migrator'
+```powershell
+$imgs = docker images --format '{{.Repository}}:{{.Tag}}'
+"Total cached images: $($imgs.Count)"
+$matched = $imgs | Select-String -Pattern 'supabase|kong|postgres|gotrue|postgrest|realtime|storage|studio|imgproxy|edge|meta|supavisor|inbucket|migrator'
+"Matched images: $($matched.Count)"
 ```
 
-**预期:** 总数 > 30,匹配 > 25。如果匹配 < 15,重跑 §2a —— 是增量的,只拉缺的。
+**预期:** `Total > 30`,`Matched > 25`。如果 `Matched < 15`,重跑 §2a —— 是增量的,只拉缺的。
 
 ### 2c. 如果 `docker compose pull` 卡住
 
 | 现象 | 大概率原因 | 行动 |
 |---|---|---|
 | daemon 响应正常,但 5+ 分钟没输出 | 某张镜像的 manifest HEAD 从镜像源超时 | `Ctrl+C`,然后重跑 `docker compose pull` —— 增量,跳过已完成的 |
-| `EOF` 反复出现 | 镜像源偶发不可达(罕见) | 重试一次。如果持续,跳 §7 镜像源可达性测试。 |
-| pull 跑完但 `docker images` 没体现 | daemon 延迟 | `sleep 30 && docker images` —— 等,先别重试 |
+| `EOF` 反复出现 | 镜像源偶发不可达(罕见) | 重试一次。如果持续,跳 §7.4 镜像源可达性测试。 |
+| pull 跑完但 `docker images` 没体现 | daemon 延迟 | `Start-Sleep -Seconds 30; docker images` —— 等,先别重试 |
 
 ---
 
@@ -119,8 +141,8 @@ docker images --format '{{.Repository}}:{{.Tag}}' | grep -cE 'supabase|kong|post
 
 ### 3a. 启动
 
-```bash
-cd d:/myworkspace/claude-workspace/supabase-local/docker
+```powershell
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
 docker compose up -d
 ```
 
@@ -128,25 +150,27 @@ docker compose up -d
 
 ### 3b. 轮询 healthy
 
-```bash
-cd d:/myworkspace/claude-workspace/supabase-local/docker
-end=$(( $(date +%s) + 300 ))
-while [ $(date +%s) -lt $end ]; do
-  healthy=$(docker ps --filter "label=com.supabase.project" --format '{{.Status}}' | grep -c '(healthy)' || true)
-  total=$(docker ps --filter "label=com.supabase.project" --format '{{.Names}}' | wc -l)
-  echo "$(date +%H:%M:%S) $healthy/$total healthy"
-  if [ "$healthy" = "$total" ] && [ "$total" -gt 0 ]; then break; fi
-  sleep 10
-done
-docker ps --filter "label=com.supabase.project" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+```powershell
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
+$end = (Get-Date).AddSeconds(300)
+while ((Get-Date) -lt $end) {
+    $healthy = (docker ps --filter "label=com.supabase.project" --format '{{.Status}}' | Select-String -SimpleMatch '(healthy)').Count
+    $total   = (docker ps --filter "label=com.supabase.project" --format '{{.Names}}').Count
+    "{0} {1}/{2} healthy" -f (Get-Date).ToString('HH:mm:ss'), $healthy, $total
+    if ($healthy -eq $total -and $total -gt 0) { break }
+    Start-Sleep -Seconds 10
+}
+docker ps --filter "label=com.supabase.project" --format 'table {{.Names}}`t{{.Status}}`t{{.Ports}}'
 ```
 
 **预期:** 日志收敛到全部行 `(healthy)`,60–120 秒内。最慢的一般是 `supabase-db-1`(它首启跑 SQL migrations)。
 
+> 注意 `{{.Names}}\t{{.Status}}\t{{.Ports}}` 里的 `\t`:PowerShell 单引号字符串原样保留 `\t`(跟 bash 单引号一样),由 docker 自己的 Go 模板解析为 tab 分隔符。不要换成 PowerShell 的反引号转义 `` `t ``。
+
 **如果 5 分钟后还有滞后的:**
 
-```bash
-docker ps --filter "label=com.supabase.project" --format '{{.Names}}\t{{.Status}}' | grep -v healthy
+```powershell
+docker ps --filter "label=com.supabase.project" --format '{{.Names}}\t{{.Status}}' | Where-Object { $_ -notmatch 'healthy' }
 docker logs <straggler-name> --tail 80
 ```
 
@@ -158,8 +182,8 @@ docker logs <straggler-name> --tail 80
 
 ### 3c. 健全性:端口在听
 
-```bash
-powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess' 2>&1
+```powershell
+Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess
 ```
 
 **预期:** 4 行,端口 54321–54324。如果某个端口不在,对应服务没绑 —— 在宣告 F1 完成之前先排查。
@@ -168,40 +192,45 @@ powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,5432
 
 ## §4. 验证 4 个端点(1 分钟)
 
+> 这里用 **`curl.exe`**(Windows 自带的 curl 二进制,Windows 10 1803+ 已含)。PowerShell 的 `curl` 是 `Invoke-WebRequest` 别名,参数完全不同 —— 不要在 PowerShell 里直接打 `curl`。
+>
+> 输出里的 `` `n `` 是反引号 + n,在 PowerShell 单引号字符串里是字面 `\n`,由 curl 的 `-w` 格式字符串解析为换行。
+
 ### 4a. Studio
 
-```bash
-curl -fsS -o /dev/null -w 'Studio HTTP %{http_code}\n' http://localhost:54323
+```powershell
+curl.exe -fsS -o NUL -w 'Studio HTTP %{http_code}`n' http://localhost:54323
 ```
 
 **预期:** `Studio HTTP 200`。(303 重定向到 `/project/default` 也 OK。)
 
 ### 4b. API Gateway
 
-```bash
-curl -fsS -o /dev/null -w 'API HTTP %{http_code}\n' http://localhost:54321/rest/v1/
+```powershell
+curl.exe -fsS -o NUL -w 'API HTTP %{http_code}`n' http://localhost:54321/rest/v1/
 ```
 
 **预期:** `API HTTP 200`。
 
 ### 4c. Postgres
 
-```bash
-PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -c '\l' -A -t 2>&1 | head -10
+```powershell
+$env:PGPASSWORD = 'postgres'
+psql -h localhost -p 54322 -U postgres -c '\l' -A -t 2>&1 | Select-Object -First 10
 ```
 
 **预期:** 一份数据库列表 —— 至少 `postgres`、`template0`、`template1`、`supabase_admin`。
 
 如果本地没装 `psql`,回退到:
 
-```bash
-docker exec supabase-db-1 psql -U postgres -c '\l' -A -t 2>&1 | head -10
+```powershell
+docker exec supabase-db-1 psql -U postgres -c '\l' -A -t 2>&1 | Select-Object -First 10
 ```
 
 ### 4d. Inbucket
 
-```bash
-curl -fsS -o /dev/null -w 'Inbucket HTTP %{http_code}\n' http://localhost:54324/
+```powershell
+curl.exe -fsS -o NUL -w 'Inbucket HTTP %{http_code}`n' http://localhost:54324/
 ```
 
 **预期:** `Inbucket HTTP 200`。
@@ -245,11 +274,13 @@ curl -fsS -o /dev/null -w 'Inbucket HTTP %{http_code}\n' http://localhost:54324/
 
 ### 6b. Commit
 
-```bash
-cd d:/myworkspace/claude-workspace/yopet
+```powershell
+Set-Location d:/myworkspace/claude-workspace/yopet
 git add docs/setup/local-supabase.md PRD.md
 git diff --cached --stat
-git commit -m "docs(setup): ship F1 local-supabase runbook; mark F1 done in PRD
+
+$msg = @'
+docs(setup): ship F1 local-supabase runbook; mark F1 done in PRD
 
 Closes: #1
 
@@ -263,34 +294,43 @@ attempted automation: corp firewall blocking Docker Hub direct egress
 after daemon restart (full Docker Desktop restart fix), and the daemon
 itself wedging under repeated compose pulls (incremental resume).
 
-PRD \u00a76 row F1 status flips ready -> done with link to the runbook.
+PRD §6 row F1 status flips ready -> done with link to the runbook.
 
-Co-Authored-By: Claude <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>
+'@
+
+git commit -m $msg
 ```
+
+> **Why here-string**:PowerShell 里 `-m "..."` 多行字符串会被 join 成单行(把换行当空格);here-string `@'...'@` 原样保留换行。git 收到的消息就是多段。
 
 ### 6c. 关闭 issue #1
 
-```bash
-cd d:/myworkspace/claude-workspace/yopet
-gh issue close 1 -c "F1 done.
+```powershell
+Set-Location d:/myworkspace/claude-workspace/yopet
+
+$body = @'
+F1 done.
 
 - stack: supabase/supabase master @ 1123a748 (Aug 4 clone, no pull)
 - 4 endpoints verified manually on 2026-08-07: Studio 54323, API 54321, Postgres 54322, Inbucket 54324
 - runbook: docs/setup/local-supabase.md (manual mode after automated daemon hang)
 - registry mirror: docker.m.daocloud.io via ~/.docker/daemon.json
-"
+'@
+
+gh issue close 1 -c $body
 ```
 
 **预期:** `✓ Closed issue hnlisf/yopet#1`。如果 `gh` 没鉴权,会打印浏览器 URL —— 访问并完成关闭。
 
 ### 6d. 验证
 
-```bash
-cd d:/myworkspace/claude-workspace/yopet
-gh issue view 1 --json state,closedAt
+```powershell
+Set-Location d:/myworkspace/claude-workspace/yopet
+gh issue view 1 --json state,closedAt | ConvertFrom-Json
 ```
 
-**预期:** `{ "state": "CLOSED", "closedAt": "2026-08-07T..." }`。
+**预期:** `state = CLOSED`,`closedAt` 是 `2026-08-07T...` 形式的字符串。
 
 ---
 
@@ -304,28 +344,32 @@ gh issue view 1 --json state,closedAt
 
 **恢复步骤(按顺序):**
 
-1. 关掉所有正在跑 docker 命令的 Git Bash / PowerShell 窗口
+1. 关掉所有正在跑 docker 命令的 PowerShell 窗口
 2. 右键 Docker Desktop 托盘图标 → **Quit Docker Desktop**
-3. 等 10 秒,引擎完全停下(在任务管理器里看 `com.docker.backend` 退出)
-4. 从**开始菜单**打开 Docker Desktop(**不要**从旧 shell 启动 —— 要全新的启动上下文)
-5. 等 60–90 秒,看托盘变绿
-6. 重跑 `§1a`(daemon 响应检查)
+3. **在 PowerShell 里跑 `wsl --shutdown`**(停 WSL2 子系统)—— 这一步有时单独就能解 hang;不需要先 Quit Docker Desktop 时可以先试这一步
+4. 等 10 秒,引擎完全停下(在任务管理器里看 `com.docker.backend` 退出)
+5. 从**开始菜单**打开 Docker Desktop(**不要**从旧 shell 启动 —— 要全新的启动上下文)
+6. 等 60–90 秒,看托盘变绿
+7. 重跑 `§1a`(daemon 响应检查)
 
 **时间预算:** 总计 2–3 分钟。如果还卡,从第 1 步再来一遍 —— 有时需要两轮。
 
 ### §7.2. 镜像源没注册
 
-**症状:** `docker info | grep "Registry Mirrors"` 输出为空。
+**症状:** `docker info | Select-String -Pattern "Registry Mirrors"` 输出为空。
 
 **原因:** `daemon.json` 的改动丢失了(Docker Desktop 在完整重启时偶尔会重写配置),或 daemon 在配置生效前就启动了。
 
 **恢复:**
 
 1. 验证文件正确:
-   ```bash
-   cat ~/.docker/daemon.json
+
+   ```powershell
+   Get-Content $HOME/.docker/daemon.json
    ```
+
    应包含:
+
    ```json
    {
      "builder": { "gc": { "defaultKeepStorage": "20GB", "enabled": true } },
@@ -333,7 +377,8 @@ gh issue view 1 --json state,closedAt
      "registry-mirrors": ["https://docker.m.daocloud.io"]
    }
    ```
-2. 如果镜像源这行不在,重新加上(Edit 工具或任何文本编辑器)
+
+2. 如果镜像源这行不在,重新加上(用 VS Code、`notepad`、或任何文本编辑器)
 3. 重启 Docker Desktop(见 §7.1)
 4. 重跑 `§1b`
 
@@ -390,15 +435,15 @@ F1 结束时**保留栈运行**,不要 `down`。F2(Flutter scaffold)和 F3(登�
 
 ## §9. 常用一行命令(F1 完成后的健全性)
 
-```bash
+```powershell
 # tail 所有 30 个容器的日志,带颜色
 docker compose -f d:/myworkspace/claude-workspace/supabase-local/docker/docker-compose.yml logs -f --tail 100
 
 # 停栈(保留数据)
-cd d:/myworkspace/claude-workspace/supabase-local/docker && docker compose stop
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker; docker compose stop
 
 # 停栈之后重启
-cd d:/myworkspace/claude-workspace/supabase-local/docker && docker compose start
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker; docker compose start
 
 # 总缓存大小(含数据 vhdx)
 docker system df
@@ -412,7 +457,14 @@ docker system df
 
 - 你跑的那条命令
 - 完整输出(或卡在哪)
-- `docker info | grep -A 2 "Registry Mirrors"` 的结果
-- `Get-Process -Name com.docker.backend | Select-Object Id,@{Name="CPU";Expression={[int]$_.CPU}},@{Name="WS_MB";Expression={[int]($_.WorkingSet/1MB)}}` 的结果
+- `docker info | Select-String -Pattern "Registry Mirrors" -Context 2,2` 的结果
+- 这条的结果:
+
+```powershell
+Get-Process -Name com.docker.backend -ErrorAction SilentlyContinue |
+    Select-Object Id,
+        @{Name='CPU_sec';Expression={[int]$_.CPU}},
+        @{Name='WS_MB';Expression={[int]($_.WorkingSet/1MB)}}
+```
 
 拿到这四样,基本上一轮我就能定位。
