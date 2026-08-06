@@ -1,130 +1,132 @@
-# yopet — Local Supabase Manual Setup
+# yopet — 本地 Supabase 部署手册
 
-> **Status:** manual mode (2026-08-07)
-> **Author:** handoff from automated agent session that hit a daemon hang
-> **Closes:** [#1](https://github.com/hnlisf/yopet/issues/1)
-> **Estimated end-to-end time:** 30–60 minutes the first time, 5 minutes thereafter
+> **状态:** 手动模式(2026-08-07)
+> **作者:** 自动化 agent 会话交接 —— 那次撞上了 daemon hang
+> **关闭:** [#1](https://github.com/hnlisf/yopet/issues/1)
+> **预计端到端时间:** 首次 30–60 分钟,之后 5 分钟
 
-This runbook brings the self-hosted Supabase stack to life on this Windows 11 + Docker Desktop host. It's written as a **manual procedure** because the prior automated session got stuck on a Docker daemon that wouldn't service CLI commands after multiple `docker compose pull` invocations — a manual human-in-the-loop is more reliable than letting the same script retry blindly.
+这份 runbook 在 Windows 11 + Docker Desktop 主机上把自托管的 Supabase 栈拉起来。写成**手动流程**,因为上次自动化会话卡在了一个 Docker daemon 上 —— 多次 `docker compose pull` 后,daemon 不再响应任何 CLI 命令;让人手介入比让脚本盲目重试更可靠。
 
 ---
 
-## §0. Current state (where we already are)
+## §0. 当前状态(已经做到哪)
 
-Things already done — **do not redo these**:
+已做的事 —— **不要再做**:
 
-| Item | Where | State |
+| 项 | 位置 | 状态 |
 |---|---|---|
-| WSL store cleanup (recovery from `docker-desktop` Uninstalling) | `%LOCALAPPDATA%\Docker\wsl\` | `docker-desktop` Running, `docker-desktop-data` registered to the 17–20 GB vhdx |
-| Registry mirror added | `~/.docker/daemon.json` → `registry-mirrors: ["https://docker.m.daocloud.io"]` | One backup at `daemon.json.bak-20260806-133114` |
-| Docker Desktop restarted | running | Server `29.6.2` last verified |
-| Partial image cache | `docker images` | Contains: alpine, hello-world, kong, supabase/postgres, darthsim/imgproxy, postgrest/postgrest, supabase/supavisor (and possibly more — a `docker compose pull` did make progress before the daemon hung). Most images probably **not** yet pulled. |
-| supabase-local clone | `d:/myworkspace/claude-workspace/supabase-local/` | Aug 4 commit `1123a748`, `master`, `docker/.env` already copied from `.env.example` |
+| WSL store 清理(从 `docker-desktop` Uninstalling 中恢复) | `%LOCALAPPDATA%\Docker\wsl\` | `docker-desktop` Running,`docker-desktop-data` 已注册到 17–20 GB vhdx |
+| 注册镜像源已加 | `~/.docker/daemon.json` → `registry-mirrors: ["https://docker.m.daocloud.io"]` | 备份在 `daemon.json.bak-20260806-133114` |
+| Docker Desktop 已重启 | 运行中 | 上次验证 Server `29.6.2` |
+| 镜像缓存(部分) | `docker images` | 已含:alpine、hello-world、kong、supabase/postgres、darthsim/imgproxy、postgrest/postgrest、supabase/supavisor(可能还有 —— daemon 卡死之前 `docker compose pull` 还在推进)。**大部分镜像可能还没拉**。 |
+| supabase-local clone | `d:/myworkspace/claude-workspace/supabase-local/` | Aug 4 commit `1123a748`,`master`,`docker/.env` 已从 `.env.example` 复制 |
 
-Things **not** yet done — this is what the manual covers:
+**还没做的** —— 本手册覆盖:
 
-- Complete the image cache (full `docker compose pull`)
+- 拉满镜像缓存(完整的 `docker compose pull`)
 - `docker compose up -d`
-- Verify the 4 endpoints
-- Update `PRD.md` §6 row F1
-- Commit the docs
+- 验证 4 个端点
+- 更新 `PRD.md` §6 行 F1
+- 提交 docs
 - `gh issue close 1`
 
 ---
 
-## §1. Pre-flight checks (5 min)
+## §1. 起飞前自检(5 min)
 
-Open a fresh terminal (PowerShell or Git Bash — both work; the runbook uses Git Bash style but commands are equivalent).
+打开一个新终端(PowerShell 或 Git Bash 都行;runbook 用 Git Bash 风格,但命令是等效的)。
 
-### 1a. Daemon responsive
+### 1a. Daemon 响应
 
 ```bash
 docker version --format 'Client:{{.Client.Version}} Server:{{.Server.Version}}'
 ```
 
-**Expected:** `Client:29.6.2 Server:29.6.2`. If this hangs for more than 30 seconds or errors with `Cannot connect to the Docker daemon`, the daemon is wedged — go to **§7. Daemon hang recovery** before proceeding.
+**预期:** `Client:29.6.2 Server:29.6.2`。如果挂死超过 30 秒,或报 `Cannot connect to the Docker daemon`,daemon 已经卡死 —— 跳到 **§7.1 daemon hang recovery** 再继续。
 
-### 1b. Mirror registered
+### 1b. 镜像源已注册
 
 ```bash
 docker info 2>&1 | grep -A 2 -i 'registry mirrors'
 ```
 
-**Expected:**
+**预期:**
+
 ```
 Registry Mirrors:
  https://docker.m.daocloud.io/
 ```
 
-If the mirror line is missing, go to **§7. Mirror not registered**.
+如果没这行,跳到 **§7.2 镜像源未注册**。
 
-### 1c. Free ports
+### 1c. 端口空闲
 
 ```bash
 powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess' 2>&1
 ```
 
-**Expected:** empty output. If any port is already bound, the existing process owns it — note its PID; you'll need to free it before `up -d` can succeed.
+**预期:** 空输出。如果有端口已被占用,占用进程 —— 记下 PID,在 `up -d` 之前先释放它。
 
-### 1d. Supabase working dir
+### 1d. Supabase 工作目录
 
 ```bash
 cd d:/myworkspace/claude-workspace/supabase-local/docker
 ls docker-compose.yml
 ```
 
-**Expected:** file exists. If not, the clone got moved — go back to your clone location.
+**预期:** 文件存在。如果不存在,clone 被挪走了 —— 回到你的 clone 位置。
 
 ---
 
-## §2. Pull the full image stack (15–45 min the first time)
+## §2. 拉镜像(首次 15–45 分钟)
 
-> The first pull downloads ~30 images totaling ~5–8 GB. It WILL take 15+ minutes — **do not interrupt it**. If you see no progress for 5+ minutes, the connection is likely wedged, not slow.
+> 首次会下载约 30 张镜像、合计 5–8 GB。**绝对不要中断**。如果超过 5 分钟没动静,通常是连接卡了,不是慢。
 
-### 2a. Pull
+### 2a. 拉
 
 ```bash
 cd d:/myworkspace/claude-workspace/supabase-local/docker
 docker compose pull
 ```
 
-**Expected output:** a stream of `Pulling <image>` and `Extracting <layer> → <size>MB` lines, ending in `Image ... Pulled` for each image. Real-time, not buffered.
+**预期输出:** 一串 `Pulling <image>` 和 `Extracting <layer> → <size>MB`,最终每张镜像 `Image ... Pulled`。实时,不缓冲。
 
-**What I saw that you should NOT mistake for failure:**
-- `error getting credentials - err: exec: "docker-credential-desktop": executable file not found in %PATH%` — harmless on most pulls. If a pull fails with this exact error, see §7.
-- Long pauses between layer extractions — normal, the daemon processes them serially.
+**我见过的、不是失败的提示:**
 
-### 2b. Verify the cache
+- `error getting credentials - err: exec: "docker-credential-desktop": executable file not found in %PATH%` —— 大多数 pull 上无害。如果某个 pull 因这个错失败,看 §7。
+- layer 抽取之间长时间停顿 —— 正常,daemon 串行处理。
+
+### 2b. 验证缓存
 
 ```bash
 docker images --format '{{.Repository}}:{{.Tag}}' | wc -l
 docker images --format '{{.Repository}}:{{.Tag}}' | grep -cE 'supabase|kong|postgres|gotrue|postgrest|realtime|storage|studio|imgproxy|edge|meta|supavisor|inbucket|migrator'
 ```
 
-**Expected:** total > 30, matching > 25. If matching < 15, repeat §2a — it's incremental and will only fetch what's missing.
+**预期:** 总数 > 30,匹配 > 25。如果匹配 < 15,重跑 §2a —— 是增量的,只拉缺的。
 
-### 2c. If `docker compose pull` gets stuck
+### 2c. 如果 `docker compose pull` 卡住
 
-| Symptom | Likely cause | Action |
+| 现象 | 大概率原因 | 行动 |
 |---|---|---|
-| No output for 5+ min despite daemon responding | A specific image manifest HEAD is timing out from the mirror | `Ctrl+C`, then retry `docker compose pull` — incremental, will skip done images |
-| `EOF` errors repeating | Mirror reachability flap (rare) | Retry once. If persistent, go to §7. Mirror reachable test. |
-| Pull completes but `docker images` doesn't reflect it | Daemon lag | `sleep 30 && docker images` — wait, don't retry yet |
+| daemon 响应正常,但 5+ 分钟没输出 | 某张镜像的 manifest HEAD 从镜像源超时 | `Ctrl+C`,然后重跑 `docker compose pull` —— 增量,跳过已完成的 |
+| `EOF` 反复出现 | 镜像源偶发不可达(罕见) | 重试一次。如果持续,跳 §7 镜像源可达性测试。 |
+| pull 跑完但 `docker images` 没体现 | daemon 延迟 | `sleep 30 && docker images` —— 等,先别重试 |
 
 ---
 
-## §3. Start the stack detached (1–3 min)
+## §3. 后台启动栈(1–3 分钟)
 
-### 3a. Start
+### 3a. 启动
 
 ```bash
 cd d:/myworkspace/claude-workspace/supabase-local/docker
 docker compose up -d
 ```
 
-**Expected output:** `Container supabase-db-1 Started`, etc., for ~30 containers, returning in ~10s.
+**预期输出:** `Container supabase-db-1 Started` 等,约 30 行,约 10 秒返回。
 
-### 3b. Poll for healthy
+### 3b. 轮询 healthy
 
 ```bash
 cd d:/myworkspace/claude-workspace/supabase-local/docker
@@ -139,31 +141,32 @@ done
 docker ps --filter "label=com.supabase.project" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-**Expected:** log converges to all rows showing `(healthy)` within 60–120 seconds. The slowest container is typically `supabase-db-1` (it runs SQL migrations on first boot).
+**预期:** 日志收敛到全部行 `(healthy)`,60–120 秒内。最慢的一般是 `supabase-db-1`(它首启跑 SQL migrations)。
 
-**If a straggler is unhealthy after 5 min:**
+**如果 5 分钟后还有滞后的:**
 
 ```bash
 docker ps --filter "label=com.supabase.project" --format '{{.Names}}\t{{.Status}}' | grep -v healthy
 docker logs <straggler-name> --tail 80
 ```
 
-Common patterns:
-- `supabase-db-1` complaining about migrations → wait another 60s; migrations take 30–60s the first time
-- `supabase-vector` or `supabase-logflare` unhealthy → these are heavy startup; give them 2 min
-- Any container saying `Exited (1)` → `docker logs <name>` to see why; usually a port conflict or missing env var
+常见模式:
 
-### 3c. Sanity: ports listening
+- `supabase-db-1` 抱怨 migrations → 再等 60 秒;migrations 首次要 30–60 秒
+- `supabase-vector` 或 `supabase-logflare` 不 healthy → 这俩启动重,给 2 分钟
+- 任何容器 `Exited (1)` → `docker logs <name>` 看为什么;通常是端口冲突或 env 缺失
+
+### 3c. 健全性:端口在听
 
 ```bash
 powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess' 2>&1
 ```
 
-**Expected:** 4 rows with ports 54321–54324. If a port is missing, that service didn't bind — investigate before claiming F1 done.
+**预期:** 4 行,端口 54321–54324。如果某个端口不在,对应服务没绑 —— 在宣告 F1 完成之前先排查。
 
 ---
 
-## §4. Verify the 4 endpoints (1 min)
+## §4. 验证 4 个端点(1 分钟)
 
 ### 4a. Studio
 
@@ -171,7 +174,7 @@ powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,5432
 curl -fsS -o /dev/null -w 'Studio HTTP %{http_code}\n' http://localhost:54323
 ```
 
-**Expected:** `Studio HTTP 200`. (303 redirect to `/project/default` is also fine.)
+**预期:** `Studio HTTP 200`。(303 重定向到 `/project/default` 也 OK。)
 
 ### 4b. API Gateway
 
@@ -179,7 +182,7 @@ curl -fsS -o /dev/null -w 'Studio HTTP %{http_code}\n' http://localhost:54323
 curl -fsS -o /dev/null -w 'API HTTP %{http_code}\n' http://localhost:54321/rest/v1/
 ```
 
-**Expected:** `API HTTP 200`.
+**预期:** `API HTTP 200`。
 
 ### 4c. Postgres
 
@@ -187,9 +190,9 @@ curl -fsS -o /dev/null -w 'API HTTP %{http_code}\n' http://localhost:54321/rest/
 PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -c '\l' -A -t 2>&1 | head -10
 ```
 
-**Expected:** a list of databases — at minimum `postgres`, `template0`, `template1`, `supabase_admin`.
+**预期:** 一份数据库列表 —— 至少 `postgres`、`template0`、`template1`、`supabase_admin`。
 
-If `psql` is not installed locally, fall back to:
+如果本地没装 `psql`,回退到:
 
 ```bash
 docker exec supabase-db-1 psql -U postgres -c '\l' -A -t 2>&1 | head -10
@@ -201,40 +204,40 @@ docker exec supabase-db-1 psql -U postgres -c '\l' -A -t 2>&1 | head -10
 curl -fsS -o /dev/null -w 'Inbucket HTTP %{http_code}\n' http://localhost:54324/
 ```
 
-**Expected:** `Inbucket HTTP 200`.
+**预期:** `Inbucket HTTP 200`。
 
 ---
 
-## §5. Cross-check issue #1's 8 acceptance criteria
+## §5. 对照 issue #1 的 8 条验收标准
 
-Tick each box mentally as the corresponding §4 step passes:
+§4 哪个 step 通过了,就给对应那几行打勾:
 
-| # | Acceptance criterion | Verified by |
+| # | 验收标准 | 由谁验证 |
 |---|---|---|
-| 1 | Docker Desktop 已安装并运行 | §1a (daemon responsive) |
-| 2 | 仓库 `supabase/supabase` 已 clone 到本地 | §1d (working dir) |
-| 3 | `docker/.env` 已从 `.env.example` 复制 | already done in §0 |
+| 1 | Docker Desktop 已安装并运行 | §1a(daemon 响应) |
+| 2 | 仓库 `supabase/supabase` 已 clone 到本地 | §1d(工作目录) |
+| 3 | `docker/.env` 已从 `.env.example` 复制 | §0 里已完成 |
 | 4 | `docker compose up -d` 成功,所有容器 healthy | §3b |
-| 5 | http://localhost:54323 (Studio) 加载 | §4a |
-| 6 | http://localhost:54321 (API Gateway) 返回 200 | §4b |
-| 7 | localhost:54322 (Postgres) 可用 psql 连接 | §4c |
-| 8 | http://localhost:54324 (Inbucket) 可看到验证邮件 | §4d |
+| 5 | http://localhost:54323(Studio)加载 | §4a |
+| 6 | http://localhost:54321(API Gateway)返回 200 | §4b |
+| 7 | localhost:54322(Postgres)可用 psql 连接 | §4c |
+| 8 | http://localhost:54324(Inbucket)可看到验证邮件 | §4d |
 
-If all 8 are green, F1 is operationally done.
+8 条全绿,F1 就运营完成了。
 
 ---
 
-## §6. Close F1 (5 min)
+## §6. 关闭 F1(5 分钟)
 
-### 6a. Update PRD.md §6 row F1
+### 6a. 更新 PRD.md §6 行 F1
 
-Open `d:/myworkspace/claude-workspace/yopet/PRD.md` and find the row:
+打开 `d:/myworkspace/claude-workspace/yopet/PRD.md`,找到这一行:
 
 ```
 | F1 | Local dev environment (Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | ready |
 ```
 
-Change the last cell from `ready` to:
+把最后一个格子从 `ready` 改成:
 
 ```
 [done](./docs/setup/local-supabase.md)
@@ -265,7 +268,7 @@ PRD \u00a76 row F1 status flips ready -> done with link to the runbook.
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-### 6c. Close issue #1
+### 6c. 关闭 issue #1
 
 ```bash
 cd d:/myworkspace/claude-workspace/yopet
@@ -278,51 +281,51 @@ gh issue close 1 -c "F1 done.
 "
 ```
 
-**Expected:** `✓ Closed issue hnlisf/yopet#1`. If `gh` is not authenticated, it will print a browser URL to complete the close.
+**预期:** `✓ Closed issue hnlisf/yopet#1`。如果 `gh` 没鉴权,会打印浏览器 URL —— 访问并完成关闭。
 
-### 6d. Verify
+### 6d. 验证
 
 ```bash
 cd d:/myworkspace/claude-workspace/yopet
 gh issue view 1 --json state,closedAt
 ```
 
-**Expected:** `{ "state": "CLOSED", "closedAt": "2026-08-07T..." }`.
+**预期:** `{ "state": "CLOSED", "closedAt": "2026-08-07T..." }`。
 
 ---
 
-## §7. Troubleshooting recipes
+## §7. 故障食谱
 
-### §7.1. Daemon hang (the bug that broke automation)
+### §7.1. Daemon hang(那次搞坏自动化的 bug)
 
-**Symptom:** `docker version`, `docker images`, `docker system df` — anything — hangs for >30s with no response. CPU on `com.docker.backend` may be elevated but not making forward progress.
+**症状:** `docker version`、`docker images`、`docker system df` —— 任何命令 —— 超过 30 秒没响应。`com.docker.backend` 的 CPU 可能升高但没进展。
 
-**Cause:** `docker compose pull` accumulates state inside the engine. Repeated invocations can wedge the engine's API queue, especially after a config change (mirror add) forces a full engine restart.
+**原因:** `docker compose pull` 在引擎内部累积状态。反复调用能把引擎的 API 队列卡死,尤其在配置变更(加 mirror)触发完整重启后。
 
-**Recovery (do this in order):**
+**恢复步骤(按顺序):**
 
-1. Close every Git Bash / PowerShell window that was running docker commands
-2. Right-click the Docker Desktop tray icon → **Quit Docker Desktop**
-3. Wait 10 seconds for the engine to fully stop (watch `com.docker.backend` exit in Task Manager)
-4. Open Docker Desktop from the **Start menu** (NOT from a previous shell — you want a fresh launch context)
-5. Wait 60–90 seconds for the green tray indicator
-6. Re-run `§1a` (daemon responsive check)
+1. 关掉所有正在跑 docker 命令的 Git Bash / PowerShell 窗口
+2. 右键 Docker Desktop 托盘图标 → **Quit Docker Desktop**
+3. 等 10 秒,引擎完全停下(在任务管理器里看 `com.docker.backend` 退出)
+4. 从**开始菜单**打开 Docker Desktop(**不要**从旧 shell 启动 —— 要全新的启动上下文)
+5. 等 60–90 秒,看托盘变绿
+6. 重跑 `§1a`(daemon 响应检查)
 
-**Time budget:** 2–3 minutes total. If it still hangs after this, repeat from step 1 — sometimes two cycles are needed.
+**时间预算:** 总计 2–3 分钟。如果还卡,从第 1 步再来一遍 —— 有时需要两轮。
 
-### §7.2. Mirror not registered
+### §7.2. 镜像源没注册
 
-**Symptom:** `docker info | grep "Registry Mirrors"` returns empty.
+**症状:** `docker info | grep "Registry Mirrors"` 输出为空。
 
-**Cause:** `daemon.json` change was lost (Docker Desktop sometimes overwrites config files on full restart) OR daemon was started before the config was in place.
+**原因:** `daemon.json` 的改动丢失了(Docker Desktop 在完整重启时偶尔会重写配置),或 daemon 在配置生效前就启动了。
 
-**Recovery:**
+**恢复:**
 
-1. Verify the file is correct:
+1. 验证文件正确:
    ```bash
    cat ~/.docker/daemon.json
    ```
-   Should contain:
+   应包含:
    ```json
    {
      "builder": { "gc": { "defaultKeepStorage": "20GB", "enabled": true } },
@@ -330,85 +333,86 @@ gh issue view 1 --json state,closedAt
      "registry-mirrors": ["https://docker.m.daocloud.io"]
    }
    ```
-2. If mirror line is missing, re-add it (use Edit tool or any text editor)
-3. Restart Docker Desktop (see §7.1)
-4. Re-run `§1b`
+2. 如果镜像源这行不在,重新加上(Edit 工具或任何文本编辑器)
+3. 重启 Docker Desktop(见 §7.1)
+4. 重跑 `§1b`
 
-### §7.3. Credential helper errors
+### §7.3. 凭据 helper 错误
 
-**Symptom:** every pull says `error getting credentials - err: exec: "docker-credential-desktop": executable file not found in %PATH%` and the pull fails.
+**症状:** 每次 pull 都说 `error getting credentials - err: exec: "docker-credential-desktop": executable file not found in %PATH%`,pull 失败。
 
-**Cause:** `~/.docker/config.json` has `"credsStore": "desktop"` but the helper binary's PATH context is broken (typically after daemon restart).
+**原因:** `~/.docker/config.json` 里有 `"credsStore": "desktop"`,但 helper 二进制的 PATH 上下文坏了(通常是 daemon 重启之后)。
 
-**Recovery:**
+**恢复:**
 
-1. The cleanest fix is a full Docker Desktop restart — see §7.1 — then retry. Do NOT edit `config.json` to remove `credsStore`; Docker Desktop will re-add it on next launch, and the conflict can confuse the engine.
-2. After restart, retry the pull. If it still fails with the same credential error, the issue is environmental — likely a corporate config that's broken for you specifically. In that case, ask: does your corp environment require you to log in to Docker Hub? (`docker login` then retry.)
-3. Note: anonymous public pulls (which is what F1 needs) don't actually require credentials — the credential lookup is just an eager check. If the lookup fails, the pull sometimes still completes. Always verify with `docker images` after a pull that errored.
+1. 最干净的修法是完整重启 Docker Desktop —— 见 §7.1 —— 然后重试。**不要**编辑 `config.json` 删 `credsStore`;Docker Desktop 下次启动会重新加上,这个冲突会把引擎搞糊涂。
+2. 重启后重试 pull。如果还是同样的凭据错,问题就在环境层面 —— 大概率是公司的某个配置对你这台机器坏了。这时候想一下:你们公司的网络是不是要求登录 Docker Hub?(`docker login` 再重试。)
+3. 注意:匿名公开 pull(F1 需要的)其实**不需要凭据** —— 凭据查询只是个提前检查。如果查询失败,有时 pull 还是会跑完。pull 报错后**永远**用 `docker images` 验证一下。
 
-### §7.4. Network: corp firewall
+### §7.4. 网络:公司防火墙
 
-**Symptom:** `docker pull` fails with `EOF` to `registry-1.docker.io`. Direct `curl https://registry-1.docker.io/v2/` times out. TCP `Test-NetConnection registry-1.docker.io -Port 443` reports `TcpTestSucceeded: False`.
+**症状:** `docker pull` 报 `EOF` 到 `registry-1.docker.io`。直连 `curl https://registry-1.docker.io/v2/` 超时。TCP `Test-NetConnection registry-1.docker.io -Port 443` 报 `TcpTestSucceeded: False`。
 
-**Cause:** corporate / school / gov network blocks direct egress to Docker Hub.
+**原因:** 公司 / 学校 / 政务网屏蔽了对 Docker Hub 的直连出口。
 
-**Recovery:** the mirror config in `daemon.json` (§7.2) routes pulls through `docker.m.daocloud.io`. If the mirror itself becomes unreachable, try alternate Chinese mirrors:
+**恢复:** `daemon.json`(§7.2)的镜像源配置让 pull 走 `docker.m.daocloud.io`。如果这个镜像源也挂了,试其他的国内镜像:
 
-- `docker.m.daocloud.io` (currently working from this host)
+- `docker.m.daocloud.io`(目前这台机可用)
 - `docker.mirrors.ustc.edu.cn`
 - `hub-mirror.c.163.com`
 - `mirror.baidubce.com`
 
-Edit `~/.docker/daemon.json`'s `registry-mirrors` to an array containing just the working one, restart Docker Desktop (§7.1), retry.
+编辑 `~/.docker/daemon.json` 的 `registry-mirrors`,只留能用的那个,重启 Docker Desktop(§7.1),重试。
 
-### §7.5. Specific image missing after pull
+### §7.5. pull 后某张镜像缺失
 
-**Symptom:** `docker compose up -d` fails with `Error response from daemon: pull access denied for <image>` or `image not found`.
+**症状:** `docker compose up -d` 报 `Error response from daemon: pull access denied for <image>` 或 `image not found`。
 
-**Cause:** mirror doesn't have a specific pinned version (rare but possible for fast-moving tags).
+**原因:** 镜像源没有某个钉死的版本(罕见,但 tag 更新快的话可能)。
 
-**Recovery:** pull the missing image directly through Docker Hub's authoritative endpoint, bypassing the mirror. Use `docker pull --disable-content-trust <image>` with the exact tag, OR temporarily add `https://registry-1.docker.io` as a fallback in `registry-mirrors`. Better: ask the mirror operator (DaoCloud) to pre-cache that tag, OR `git pull` the supabase-local repo to a newer commit whose tags the mirror does have.
+**恢复:** 直接绕过镜像源,从 Docker Hub 权威端点拉这张。用 `docker pull --disable-content-trust <image>` 指定精确 tag,或者临时把 `https://registry-1.docker.io` 加进 `registry-mirrors` 当 fallback。更好的做法:让镜像源运营方(DaoCloud)预缓存这个 tag,或者 `git pull` supabase-local 到一个镜像源有的更新 commit。
 
 ---
 
-## §8. Boundary — what you can / can't do after F1 is up
+## §8. 边界 —— F1 起来后能做什么 / 不能做什么
 
-| You CAN | You CAN'T (yet) |
+| 能做 | 还不能(等后续) |
 |---|---|
-| `psql` to `postgres`, query the bootstrap schema (`auth.users`, etc.) | Create a `yopet` user, log in via Flutter — that's F3 |
-| Open Studio, run ad-hoc SQL | See the 9 `yopet.*` tables — schema migrations land in a later ticket |
-| Watch Inbucket receive emails when GoTrue sends them | Tie RLS to your user |
-| Tail container logs for triage | Use the `supabase` CLI features (only `docker compose` directly for now) |
-| Stop the stack with `docker compose down` (preserves `disk/docker_data.vhdx`) | Trust that `docker compose down -v` is safe — it WILL delete the data vhdx. Avoid unless intentional reset. |
+| `psql` 到 `postgres`,查 bootstrap schema(`auth.users` 等) | 创建一个 `yopet` 用户、通过 Flutter 登录 —— 那是 F3 |
+| 打开 Studio、跑 ad-hoc SQL | 看到 9 张 `yopet.*` 表 —— migrations 在后续 ticket |
+| 当 GoTrue 发邮件时,看 Inbucket 收到 | 给用户绑 RLS |
+| tail 容器日志做 triage | 用 `supabase` CLI 的功能(目前只能直接 `docker compose`) |
+| 用 `docker compose down` 停栈(保留 `disk/docker_data.vhdx`) | 认为 `docker compose down -v` 安全 —— 它**会**删数据 vhdx。除非故意重置,别用。 |
 
-The stack is **left running** at the end of F1 — don't `down` it. F2 (Flutter scaffold) and F3 (sign-in) both need it.
+F1 结束时**保留栈运行**,不要 `down`。F2(Flutter scaffold)和 F3(登录)都要它。
 
 ---
 
-## §9. Useful one-liners (post-F1 sanity)
+## §9. 常用一行命令(F1 完成后的健全性)
 
 ```bash
-# tail all logs across all 30 containers, color-coded
+# tail 所有 30 个容器的日志,带颜色
 docker compose -f d:/myworkspace/claude-workspace/supabase-local/docker/docker-compose.yml logs -f --tail 100
 
-# stop the stack (preserves data)
+# 停栈(保留数据)
 cd d:/myworkspace/claude-workspace/supabase-local/docker && docker compose stop
 
-# restart after stop
+# 停栈之后重启
 cd d:/myworkspace/claude-workspace/supabase-local/docker && docker compose start
 
-# total cache size (incl. data vhdx)
+# 总缓存大小(含数据 vhdx)
 docker system df
 ```
 
 ---
 
-## §10. If you get stuck again and want me to take over
+## §10. 又卡住了,想让我接手
 
-Paste into chat:
-- the exact command you ran
-- the output (or where it hung)
-- result of `docker info | grep -A 2 "Registry Mirrors"`
-- result of `Get-Process -Name com.docker.backend | Select-Object Id,@{Name="CPU";Expression={[int]$_.CPU}},@{Name="WS_MB";Expression={[int]($_.WorkingSet/1MB)}}`
+把下面 4 样贴回对话:
 
-With those four pieces I can usually diagnose in one round.
+- 你跑的那条命令
+- 完整输出(或卡在哪)
+- `docker info | grep -A 2 "Registry Mirrors"` 的结果
+- `Get-Process -Name com.docker.backend | Select-Object Id,@{Name="CPU";Expression={[int]$_.CPU}},@{Name="WS_MB";Expression={[int]($_.WorkingSet/1MB)}}` 的结果
+
+拿到这四样,基本上一轮我就能定位。

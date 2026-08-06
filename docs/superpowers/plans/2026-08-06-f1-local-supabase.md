@@ -1,116 +1,125 @@
-# F1 — Local Supabase Implementation Plan
+# F1 — 本地 Supabase 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给 agent 执行者:** 必备子技能: 使用 `superpowers:subagent-driven-development`(推荐)或 `superpowers:executing-plans` 按本计划 task-by-task 实施。步骤用 checkbox(`- [ ]`)语法标记。
 
-**Goal:** Bring up the official `supabase/supabase` docker-compose stack locally and prove the four operational endpoints (Studio, API Gateway, Postgres, Inbucket) all return healthy. Then capture the procedure in a runbook and close issue #1.
+**目标:** 在本地拉起官方 `supabase/supabase` docker-compose 栈,并证明四个运营端点(Studio、API Gateway、Postgres、Inbucket)都返回 healthy。然后把过程记到 runbook 里,关闭 issue #1。
 
-**Architecture:** Operational task, not a code project. We do `docker compose pull && docker compose up -d` against the existing `d:/myworkspace/claude-workspace/supabase-local/` clone (Aug 4 commit `1123a748`, do not `git pull`). Poll until all containers are `healthy`. Hit the four endpoints. Author a single runbook capturing prereqs + the just-discovered WSL recovery recipe. Update PRD status and close the issue.
+**架构:** 运营型 task,不是代码项目。我们在已有的 `d:/myworkspace/claude-workspace/supabase-local/` clone 上(Aug 4 commit `1123a748`,**不要** `git pull`)做 `docker compose pull && docker compose up -d`。轮询直到所有容器 `healthy`。验证四个端点。撰写一份 runbook,内容覆盖前置条件 + 刚发现的 WSL 恢复方法。更新 PRD 状态,关闭 issue。
 
-**Tech Stack:**
-- Docker Desktop (just recovered via 5-step WSL recovery — memory `project-yopet-docker-desktop-crash`)
-- `docker compose` (bundled with Docker Desktop; v2, NOT legacy `docker-compose` v1)
-- `supabase/supabase` monorepo, `docker/` directory
-- `gh` CLI (issue tracking per yopet `CLAUDE.md`)
-- PowerShell for PSQL backend (or WSL postgres-client)
+**技术栈:**
+- Docker Desktop(刚通过 5 步 WSL 恢复 — 记忆 `project-yopet-docker-desktop-crash`)
+- `docker compose`(Docker Desktop 自带;v2,**不要**老的 `docker-compose` v1)
+- `supabase/supabase` monorepo,`docker/` 目录
+- `gh` CLI(根据 yopet `CLAUDE.md` 走 issue tracking)
+- PowerShell 做 PSQL 后端(或 WSL 内的 postgres-client)
 
-## Global Constraints
+## 全局约束
 
-These constraints are copied verbatim from [the spec](docs/superpowers/specs/2026-08-06-f1-local-supabase-design.md) and from `ADR-0004`. Every task's requirements implicitly include this section.
+以下约束从[这份 spec](docs/superpowers/specs/2026-08-06-f1-local-supabase-design.md)和 `ADR-0004` 逐字复制。每个 task 的要求隐式包含本节。
 
-- **Use the Aug 4 clone as-is.** Do NOT `git pull` `supabase-local/` — image tags and template variables are pinned to the `1123a748` commit.
-- **Do NOT delete** `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` (the data vhdx can grow to 17–20 GB even when empty; preserve it).
-- **Scope** = strict issue #1 acceptance criteria. No `yopet.*` schema migrations, no `.env` value overrides, no submodule-ification.
-- **Failure budget**: at most 2 retries per component per task. 3+ failures → STOP and re-investigate via `superpowers:systematic-debugging` (return to Phase 1).
-- **Working directory for compose commands** = `d:/myworkspace/claude-workspace/supabase-local/docker/`. Always run compose commands from there.
-- **Issue tracker** = GitHub via `gh` CLI. The yopet `CLAUDE.md` says "Issues live in this repo's GitHub Issues, accessed via the `gh` CLI."
-- **Yopet commit convention** = conventional commits (the prior commits in this repo: `chore: initial commit (agent skills scaffolding)`, `docs(superpowers): ...`, `docs(prd): ...`).
-- **End every git commit message** with `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- **Aug 4 clone 原样用。** 不要 `git pull` `supabase-local/` — 镜像 tag 和模板变量钉死在 `1123a748` commit。
+- **不要删** `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`(数据盘即便为空也可能长到 17–20 GB,保留它)。
+- **范围** = 严格 issue #1 的验收标准。不动 `yopet.*` schema migrations、不改 `.env` 默认值、不引入 submodule。
+- **重试预算**: 每个 task、每个组件最多 2 次重试。3+ 次失败 → STOP,回到 `superpowers:systematic-debugging` 的 Phase 1 重新调查。
+- **compose 命令的工作目录** = `d:/myworkspace/claude-workspace/supabase-local/docker/`。compose 命令都从这里执行。
+- **issue tracker** = GitHub,通过 `gh` CLI。yopet `CLAUDE.md` 写明 "Issues live in this repo's GitHub Issues, accessed via the `gh` CLI."
+- **Yopet commit 规范** = conventional commits(本仓库此前 commit:`chore: initial commit (agent skills scaffolding)`、`docs(superpowers): ...`、`docs(prd): ...`)。
+- **每条 commit 消息以** `Co-Authored-By: Claude <noreply@anthropic.com>` 结尾。
 
 ---
 
-## Task 1: Pull all Supabase images
+## Task 1: 拉取所有 Supabase 镜像
 
-**Files:** None (purely operational)
+**Files:** 无(纯运营)
 
-**Interfaces:** None (no yopet file is touched; Docker image cache is the deliverable)
+**Interfaces:** 无(不碰任何 yopet 文件;Docker 镜像缓存就是产出)
 
-- [ ] **Step 1: Verify Docker daemon is responsive**
+- [ ] **Step 1: 验证 Docker daemon 响应**
 
 Run:
+
 ```bash
 docker info --format 'Server:{{.Server.Version}}'
 ```
 
-Expected: prints `Server:29.6.2` (or similar). If it errors with "Cannot connect to the Docker daemon", open Docker Desktop from the Start menu and wait until the tray icon shows green, then retry.
+Expected: 输出 `Server:29.6.2`(或类似)。如果报 "Cannot connect to the Docker daemon",从开始菜单打开 Docker Desktop,等托盘图标变绿,再重试。
 
-- [ ] **Step 2: Verify the current image cache is empty (failing precondition)**
+- [ ] **Step 2: 验证当前镜像缓存为空(failing precondition)**
 
 Run:
+
 ```bash
 docker images --format '{{.Repository}}:{{.Tag}}' | grep -c 'supabase\|postgres\|gotrue\|kong\|postgrest' || true
 ```
 
-Expected: `0`. If non-zero, the previous run already populated the cache — that's still fine, but it confirms step 3 will be incremental not full.
+Expected: `0`。如果非零,说明之前已经填过缓存 —— 这没问题,但可以确认 step 3 会走增量而非完整拉取。
 
-- [ ] **Step 3: Run `docker compose pull`**
+- [ ] **Step 3: 运行 `docker compose pull`**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/supabase-local/docker"
 docker compose pull
 ```
 
-Expected output: a stream of `Pulling xxx Pull complete` lines for ~30 images (Postgres 15, GoTrue, PostgREST, Realtime, Storage, Studio, Inbucket, Analytics/Logflare, Imgproxy, Supavisor/Pooler, pg-meta, Edge Runtime, Migrator, etc.). Expected duration: 5–10 minutes on first run, ~30s if cache is warm.
+Expected output: 一串 `Pulling xxx Pull complete`,约 30 张镜像(Postgres 15、GoTrue、PostgREST、Realtime、Storage、Studio、Inbucket、Analytics/Logflare、Imgproxy、Supavisor/Pooler、pg-meta、Edge Runtime、Migrator 等)。首跑预期时长:5–10 分钟;缓存暖时 ~30 秒。
 
-Failure handling:
-- Network/proxy timeout → retry ONCE; second failure → STOP, return to Phase 1 of systematic-debugging
-- Layer pull error → re-run `docker compose pull` (resumes from failed layer), retry ONCE; second failure → STOP
+失败处理:
 
-- [ ] **Step 4: Verify the pull landed**
+- 网络/代理超时 → 重试 ONCE;第二次失败 → STOP,回到 systematic-debugging Phase 1
+- 拉 layer 出错 → 重跑 `docker compose pull`(从失败的 layer 续传),重试 ONCE;第二次失败 → STOP
+
+- [ ] **Step 4: 验证 pull 落地**
 
 Run:
+
 ```bash
 docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'supabase|postgres|gotrue|kong|postgrest' | wc -l
 ```
 
-Expected: at least `15` matching images. (This is a fuzzy lower bound because Supabase's compose file references both `supabase/*` and `postgres:*` images.)
+Expected: 至少 `15` 张匹配镜像。(这是个模糊下界,因为 Supabase 的 compose 文件同时引用 `supabase/*` 和 `postgres:*` 镜像。)
 
-- [ ] **Step 5: No-commit confirmation**
+- [ ] **Step 5: 无 commit 确认**
 
-This task touches no yopet source files, so no commit. The image cache lives in `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` and survives commits — untracked.
+本 task 不动任何 yopet 源文件,所以没有 commit。镜像缓存存在 `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx` 中,跨 commit 存活 —— 不用追踪。
 
 ---
 
-## Task 2: Start the stack detached and wait for healthy
+## Task 2: 后台启动栈并等 healthy
 
-**Files:** None (operational)
+**Files:** 无(运营型)
 
 **Interfaces:**
-- Consumes: Task 1's image cache
-- Produces: ~30 running containers on ports 54321–54324, each `State: Up (healthy)` within 5 minutes
 
-- [ ] **Step 1: Verify the failing precondition — no Supabase containers running**
+- Consumes: Task 1 的镜像缓存
+- Produces: ~30 个运行中的容器,端口 54321–54324,5 分钟内全部 `State: Up (healthy)`
+
+- [ ] **Step 1: 验证 failing precondition —— 没有 Supabase 容器在跑**
 
 Run:
+
 ```bash
 docker ps --filter "label=com.supabase.project" --format '{{.Names}}'
 ```
 
-Expected: empty line. If non-empty, prior run leaked containers — Task 4 troubleshooting says `docker compose down` first, then proceed.
+Expected: 空行。如果非空,说明之前的 run 漏掉了容器 — Task 4 故障排查先 `docker compose down`,再继续。
 
-- [ ] **Step 2: Start the stack detached**
+- [ ] **Step 2: 后台启动栈**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/supabase-local/docker"
 docker compose up -d
 ```
 
-Expected output: a summary like `Container supabase-db-1 Started`, etc., for ~30 containers, returning in ~10s.
+Expected output: 类似 `Container supabase-db-1 Started` 的汇总,~30 行,~10 秒返回。
 
-- [ ] **Step 3: Poll until all containers are healthy (≤ 5 min)**
+- [ ] **Step 3: 轮询直到所有容器 healthy(≤ 5 min)**
 
-Run (single shell command):
+Run(单 shell 命令):
+
 ```bash
 cd "d:/myworkspace/claude-workspace/supabase-local/docker"
 end=$(( $(date +%s) + 300 ))
@@ -124,165 +133,178 @@ done
 docker ps --filter "label=com.supabase.project" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-Expected output: a progress log that converges to a state where all rows say `(healthy)`. Common durations: 60–120 seconds for a warm cache. Migration container (`supabase-db-1`) is typically the slowest because it runs SQL migrations on first boot.
+Expected output: 一段进度日志,最终所有行都是 `(healthy)`。常见时长:缓存暖时 60–120 秒。迁移容器(`supabase-db-1`)通常最慢,因为它首启时要跑 SQL migrations。
 
-Failure handling:
-- After 5 min, if not all healthy → `docker ps --filter "label=com.supabase.project" --format '{{.Names}}\t{{.Status}}'` to identify the stragglers, then `docker logs <name> --tail 50` for one straggler at a time. Stop after 2 stragglers-debugged and return to Phase 1.
+失败处理:
 
-- [ ] **Step 4: Verify port mappings exist (sanity)**
+- 5 分钟后还不全 healthy → `docker ps --filter "label=com.supabase.project" --format '{{.Names}}\t{{.Status}}'` 找出滞后的,然后 `docker logs <name> --tail 50` 一次一个 debug。debug 2 个后回 Phase 1。
+
+- [ ] **Step 4: 验证端口映射(健全性)**
 
 Run:
+
 ```bash
 powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 54321,54322,54323,54324 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess | Format-Table -AutoSize'
 ```
 
-Expected: 4 rows with `LocalPort` = 54321, 54322, 54323, 54324 in `Listen` state. If any port is missing, the corresponding service failed to start — investigate before proceeding to Task 3.
+Expected: 4 行,`LocalPort` 分别为 54321/54322/54323/54324,状态 `Listen`。任一端口缺失,说明对应服务没起 —— 在进 Task 3 之前先排查。
 
-- [ ] **Step 5: No-commit confirmation**
+- [ ] **Step 5: 无 commit 确认**
 
-Same as Task 1.
+同 Task 1。
 
 ---
 
-## Task 3: Verify the four endpoints from issue #1
+## Task 3: 验证 issue #1 的 4 个端点
 
-**Files:** None (operational)
+**Files:** 无(运营型)
 
 **Interfaces:**
-- Consumes: Task 2's running stack on ports 54321–54324
-- Produces: passing evidence for each of issue #1's 8 acceptance-criteria checkboxes
 
-- [ ] **Step 1: Verify Studio (http://localhost:54323)**
+- Consumes: Task 2 跑起来的栈(端口 54321–54324)
+- Produces: issue #1 全部 8 条验收 checkbox 的通过证据
+
+- [ ] **Step 1: 验证 Studio (http://localhost:54323)**
 
 Run:
+
 ```bash
 curl -fsS -o /dev/null -w 'Studio HTTP %{http_code}\n' http://localhost:54323
 ```
 
-Expected: `Studio HTTP 200`. A 30x (redirect) is also acceptable since Studio may redirect to `/project/default`.
+Expected: `Studio HTTP 200`。30x(重定向)也可以接受,因为 Studio 可能重定向到 `/project/default`。
 
-- [ ] **Step 2: Verify API Gateway (http://localhost:54321)**
+- [ ] **Step 2: 验证 API Gateway (http://localhost:54321)**
 
 Run:
+
 ```bash
 curl -fsS -o /dev/null -w 'API HTTP %{http_code}\n' http://localhost:54321/rest/v1/
 ```
 
-Expected: `API HTTP 200`. (PostgREST's `/rest/v1/` returns 200 even when empty.)
+Expected: `API HTTP 200`。(PostgREST 的 `/rest/v1/` 即便库为空也返回 200。)
 
-- [ ] **Step 3: Verify Postgres (localhost:54322)**
+- [ ] **Step 3: 验证 Postgres (localhost:54322)**
 
-Run (Windows-native, assuming psql on PATH):
+Run(假设 psql 在 PATH 上):
+
 ```bash
 PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -c '\l' -A -t 2>&1 | head -10
 ```
 
-Expected: a `postgres`, `template0`, `template1`, `supabase_admin` list of databases.
+Expected: 列出 `postgres`、`template0`、`template1`、`supabase_admin` 等数据库。
 
-If `psql` is not on PATH (this Windows host might not have postgres-client installed), fall back to Docker:
+如果 psql 不在 PATH(这台 Windows 可能没装 postgres-client),回退到 Docker:
+
 ```bash
 docker exec supabase-db-1 psql -U postgres -c '\l' -A -t 2>&1 | head -10
 ```
 
-Either form should list the same databases.
+两种方式应该列出相同的库。
 
-- [ ] **Step 4: Verify Inbucket (http://localhost:54324)**
+- [ ] **Step 4: 验证 Inbucket (http://localhost:54324)**
 
 Run:
+
 ```bash
 curl -fsS -o /dev/null -w 'Inbucket HTTP %{http_code}\n' http://localhost:54324/
 ```
 
-Expected: `Inbucket HTTP 200`.
+Expected: `Inbucket HTTP 200`。
 
-- [ ] **Step 5: Cross-check against issue #1's 8 acceptance criteria**
+- [ ] **Step 5: 对照 issue #1 的 8 条验收标准**
 
-Each of the four verifications maps directly to two of issue #1's checkboxes. Tick them mentally:
+这 4 个验证各对应 issue #1 中的两条 checkbox,逐一脑内打勾:
 
-| # | Acceptance criterion | Verified by |
+| # | 验收标准 | 验证来源 |
 |---|---|---|
-| 1 | Docker Desktop 已安装并运行 | Task 1 step 1 + Task 2 step 1 (preconditions) |
-| 2 | 仓库 `supabase/supabase` 已 clone 到本地 | precondition; clone at `d:/myworkspace/claude-workspace/supabase-local/` predates this session |
-| 3 | `docker/.env` 已从 `.env.example` 复制 | precondition; `docker/.env` exists (identical 11773-byte size to `.env.example`) |
-| 4 | `docker compose up -d` 成功，所有容器 healthy | Task 2 step 3 |
+| 1 | Docker Desktop 已安装并运行 | Task 1 step 1 + Task 2 step 1(前置) |
+| 2 | 仓库 `supabase/supabase` 已 clone 到本地 | 前置;`d:/myworkspace/claude-workspace/supabase-local/` 的 clone 早于本次会话 |
+| 3 | `docker/.env` 已从 `.env.example` 复制 | 前置;`docker/.env` 已存在(与 `.env.example` 字节数完全一致,11773 bytes) |
+| 4 | `docker compose up -d` 成功,所有容器 healthy | Task 2 step 3 |
 | 5 | http://localhost:54323 (Studio) 加载,显示空项目 | Task 3 step 1 |
 | 6 | http://localhost:54321 (API Gateway) 返回 200 | Task 3 step 2 |
 | 7 | localhost:54322 (Postgres) 可用 psql 连接 | Task 3 step 3 |
 | 8 | http://localhost:54324 (Inbucket) 可看到验证邮件 | Task 3 step 4 |
 
-- [ ] **Step 6: No-commit confirmation**
+- [ ] **Step 6: 无 commit 确认**
 
-Same as Task 1.
+同 Task 1。
 
 ---
 
-## Task 4: Author runbook + update PRD status + commit
+## Task 4: 写 runbook + 更新 PRD 状态 + commit
 
 **Files:**
+
 - Create: `yopet/docs/setup/local-supabase.md`
-- Modify: `yopet/PRD.md` line range covering §6 row F1 (currently `status: ready`)
+- Modify: `yopet/PRD.md` §6 行 F1(当前 `status: ready`)
 
 **Interfaces:**
-- Consumes: the WSL recovery recipe from memory `project-yopet-docker-desktop-crash`; the endpoint list established by Task 3
-- Produces: a single runbook another agent can use from a clean Windows install; an updated PRD that reflects F1's true status
 
-- [ ] **Step 1: Verify failing precondition — the runbook does not yet exist**
+- Consumes: 来自记忆 `project-yopet-docker-desktop-crash` 的 WSL 恢复方法;Task 3 确认的端点列表
+- Produces: 一份 runbook,另一个 agent 从干净 Windows 装机即可用;一份更新过的 PRD,反映 F1 真实状态
+
+- [ ] **Step 1: 验证 failing precondition —— runbook 还不存在**
 
 Run:
+
 ```bash
 ls "d:/myworkspace/claude-workspace/yopet/docs/setup/local-supabase.md" 2>&1
 ```
 
-Expected: `No such file or directory`.
+Expected: `No such file or directory`。
 
-- [ ] **Step 2: Verify failing precondition — PRD §6 row F1 still says `ready`**
+- [ ] **Step 2: 验证 failing precondition —— PRD §6 行 F1 还是 `ready`**
 
 Run:
+
 ```bash
 grep -n '| F1 | Local dev environment' "d:/myworkspace/claude-workspace/yopet/PRD.md"
 ```
 
-Expected: a line containing `| F1 | Local dev environment (Docker Supabase) | [#1](...) | ready |`. If the state is already `done`, this task is partly redundant — still update row, just note the duplication in commit body.
+Expected: 一行含 `| F1 | Local dev environment (Docker Supabase) | [#1](...) | ready |`。如果已经是 `done`,本 task 部分重复 —— 仍更新这行,在 commit body 里说明重复。
 
-- [ ] **Step 3: Create the runbook directory and write the file**
+- [ ] **Step 3: 创建 runbook 目录并写文件**
 
 Run:
+
 ```bash
 mkdir -p "d:/myworkspace/claude-workspace/yopet/docs/setup"
 ```
 
-Then create `d:/myworkspace/claude-workspace/yopet/docs/setup/local-supabase.md` with this exact content:
+然后创建 `d:/myworkspace/claude-workspace/yopet/docs/setup/local-supabase.md`,内容如下:
 
 ````markdown
-# yopet — Local Supabase Setup
+# yopet — 本地 Supabase 部署
 
-> Status: live (F1 done, issue #1 closed)
-> Last verified: 2026-08-06
-> Closes: [#1](https://github.com/hnlisf/yopet/issues/1)
+> 状态: 生效(F1 完成,issue #1 已关闭)
+> 最近验证: 2026-08-06
+> 关闭: [#1](https://github.com/hnlisf/yopet/issues/1)
 
-This runbook brings the self-hosted Supabase stack to life on a Windows 11 + Docker Desktop host. It also captures the WSL recovery recipe in case Docker Desktop enters a stuck state (the recovery that unblocked F1 itself).
+这份 runbook 在 Windows 11 + Docker Desktop 主机上把自托管的 Supabase 栈拉起来。它还记录了 WSL 恢复方法,以备 Docker Desktop 进入卡死状态(也就是把 F1 自身解锁的那次)。
 
-## 1. Prerequisites
+## 1. 前置条件
 
 | | |
 |---|---|
-| OS | Windows 11 with WSL2 enabled (most modern Win11 installs have it) |
-| Docker Desktop | 4.x+, with WSL2 backend selected (Settings → General → Use WSL2) |
-| Free ports | 54321 (Kong/API), 54322 (Postgres), 54323 (Studio), 54324 (Inbucket) |
-| `gh` CLI | for issue tracking per `CLAUDE.md` |
-| `psql` (optional) | for direct DB access; `docker exec supabase-db-1 psql …` works as a fallback |
+| 操作系统 | Windows 11,启用 WSL2(大多数新装的 Win11 默认启用) |
+| Docker Desktop | 4.x+,WSL2 后端(Settings → General → Use WSL2) |
+| 空闲端口 | 54321(Kong/API)、54322(Postgres)、54323(Studio)、54324(Inbucket) |
+| `gh` CLI | 走 `CLAUDE.md` 规定的 issue tracking |
+| `psql`(可选) | 直连 DB 用;`docker exec supabase-db-1 psql …` 也能 fallback |
 
-Verify with:
+验证方式:
 
 ```bash
-wsl --status                     # should show 默认版本: 2
-docker --version                 # should be Docker Desktop, Engine 25+
-docker run --rm hello-world      # smoke test (proves Docker + WSL + netns all work)
+wsl --status                     # 应显示 默认版本: 2
+docker --version                 # 应为 Docker Desktop,Engine 25+
+docker run --rm hello-world      # 烟雾测试(证明 Docker + WSL + netns 全部 OK)
 ```
 
-## 2. ⚠ Docker Desktop WSL recovery playbook
+## 2. ⚠ Docker Desktop WSL 恢复 playbook
 
-If `docker compose up` fails with errors of this exact shape:
+如果 `docker compose up` 报错形态如下:
 
 ```
 terminating WSL distro "docker-desktop": ... 不存在具有所提供名称的分发
@@ -292,94 +314,96 @@ checking if isocache exists: CreateFile \\wsl$\docker-desktop-data\isocache\:
 The network name cannot be found.
 ```
 
-…the WSL-store has a half-removed `docker-desktop` entry. Recover with these 5 steps. **This does NOT delete your images** — the data vhdx is preserved.
+…那 WSL-store 里的 `docker-desktop` 条目处于半卸状态。按这 5 步恢复。**这一步不会删你的镜像** —— 数据 vhdx 会保留。
 
 ```bash
-# 1. Make sure Docker Desktop is not running (check tray icon)
+# 1. 确保 Docker Desktop 没在运行(看托盘图标)
 
-# 2. Quiesce WSL
+# 2. 静默 WSL
 wsl --shutdown
 
-# 3. Clear the stuck docker-desktop registry entry.
-#    To find its GUID first:
+# 3. 清掉卡死的 docker-desktop 注册条目。
+#    先查它的 GUID:
 #       powershell -NoProfile -Command "Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' | Select Name"
-#    Then, with the docker-desktop GUID substituted:
+#    然后把 docker-desktop 的 GUID 替换进去:
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\{<docker-desktop-guid>}" /f
 
-# 4. Delete the runtime vhdx (small, ~128 MB — Docker Desktop recreates)
+# 4. 删运行时 vhdx(小,约 128 MB —— Docker Desktop 会重建)
 rm "$LOCALAPPDATA/Docker/wsl/main/ext4.vhdx"
 
-# 5. Relaunch Docker Desktop from the Start menu — it rebuilds runtime + re-detects the data vhdx
+# 5. 从开始菜单重启 Docker Desktop —— 它会重建运行时 + 重新识别数据 vhdx
 ```
 
-After recovery, `disk/docker_data.vhdx` (which may show as 17–20 GB even when empty, because it's a dynamic ext4 filesystem that grows on demand) is preserved untouched.
+恢复后,`disk/docker_data.vhdx`(哪怕显示 17–20 GB,也可能为空,因为是按需扩容的动态 ext4 文件系统)原封不动。
 
-## 3. Start the stack
+## 3. 启动栈
 
 ```bash
 cd d:/myworkspace/claude-workspace/supabase-local/docker
 
-# Pull ~30 images (~5–8 GB, 5–10 min on first run, ~30s if cache is warm)
+# 拉取 ~30 张镜像(约 5–8 GB,首跑 5–10 分钟,缓存暖时约 30 秒)
 docker compose pull
 
-# Start detached
+# 后台启动
 docker compose up -d
 
-# Watch for healthy (~60–120 seconds)
+# 看 healthy 状态(约 60–120 秒)
 docker ps --filter health=healthy --format 'table {{.Names}}\t{{.Status}}'
 ```
 
-The expected outcome is all rows show `(healthy)` within a few minutes. The slowest container is typically `supabase-db-1` because it runs SQL migrations on first boot.
+预期输出是几分钟内全部行都 `(healthy)`。最慢的通常是 `supabase-db-1`,因为首启时它要跑 SQL migrations。
 
-## 4. Endpoint cheat sheet
+## 4. 端点速查表
 
-| Port | URL | Service | Purpose | PRD/ADR cross-ref |
+| 端口 | URL | 服务 | 用途 | PRD/ADR 交叉引用 |
 |---|---|---|---|---|
-| 54321 | http://localhost:54321 | Kong (API Gateway) | REST/GraphQL entry | ADR-0004 |
-| 54322 | `psql -h localhost -p 54322 -U postgres` | Postgres direct | DB connection for migrations | PRD §5 step 1 |
-| 54323 | http://localhost:54323 | Studio | DB GUI, run ad-hoc SQL | F2 |
-| 54324 | http://localhost:54324 | Inbucket | Email inbox for GoTrue in dev | PRD §5 step 1 (email verify) |
+| 54321 | http://localhost:54321 | Kong(API Gateway) | REST/GraphQL 入口 | ADR-0004 |
+| 54322 | `psql -h localhost -p 54322 -U postgres` | Postgres 直连 | migrations 的 DB 连接 | PRD §5 step 1 |
+| 54323 | http://localhost:54323 | Studio | DB GUI,跑 ad-hoc SQL | F2 |
+| 54324 | http://localhost:54324 | Inbucket | dev 环境下 GoTrue 的邮件收件箱 | PRD §5 step 1(邮件验证) |
 
-Postgres password: `postgres` (default — value of `POSTGRES_PASSWORD` in `docker/.env`).
-Default schema bootstrap (`auth.users`, `storage.objects`, etc.) is created automatically; no manual migrations in F1.
+Postgres 密码: `postgres`(默认值 —— `docker/.env` 里 `POSTGRES_PASSWORD` 的值)。
+默认 schema bootstrap(`auth.users`、`storage.objects` 等)会自动创建;F1 不需要手写 migration。
 
-## 5. Boundary — what you can / can't do here
+## 5. 边界 —— 这里能做什么 / 不能做什么
 
-| You CAN | You CAN'T (yet) |
+| 能做 | 还不能(等后续) |
 |---|---|
-| `psql` to `postgres`, query the bootstrap schema (`auth.users`, etc.) | Create a `yopet` user, log in via Flutter — that's F3 |
-| Open Studio, run ad-hoc SQL | See the 9 `yopet.*` tables — migrations land in a later ticket |
-| Watch Inbucket receive emails when GoTrue sends them | Tie RLS to your user |
-| Tail container logs for triage | Use `supabase` CLI features (only via `docker compose` directly) |
+| `psql` 到 `postgres`,查 bootstrap schema(`auth.users` 等) | 创建一个 `yopet` 用户、通过 Flutter 登录 —— 那是 F3 |
+| 打开 Studio、跑 ad-hoc SQL | 看到 9 张 `yopet.*` 表 —— migrations 在后续 ticket |
+| 当 GoTrue 发邮件时,看 Inbucket 收到 | 给用户绑 RLS |
+| tail 容器日志做 triage | 用 `supabase` CLI 的功能(目前只能直接 `docker compose`) |
 ````
 
-- [ ] **Step 4: Update PRD.md §6 row F1 from `ready` to `done`**
+- [ ] **Step 4: 更新 PRD.md §6 行 F1,从 `ready` 改成 `done`**
 
-Open `d:/myworkspace/claude-workspace/yopet/PRD.md` and find:
+打开 `d:/myworkspace/claude-workspace/yopet/PRD.md`,找到:
 
 ```
 | F1 | Local dev environment (Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | ready |
 ```
 
-Replace the row's last cell from `ready` to `done`, and append the runbook link. Final row text:
+把这一行的最后一个格子从 `ready` 改成 `done`,并加上 runbook 链接。最终这行:
 
 ```
 | F1 | Local dev environment (Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | [done](./docs/setup/local-supabase.md) |
 ```
 
-- [ ] **Step 5: Verify the changes**
+- [ ] **Step 5: 验证改动**
 
 Run:
+
 ```bash
 head -5 "d:/myworkspace/claude-workspace/yopet/docs/setup/local-supabase.md"
 grep -n '| F1 | Local dev environment' "d:/myworkspace/claude-workspace/yopet/PRD.md"
 ```
 
-Expected: the runbook head matches its first 5 lines (title block); the grep returns a single line whose last cell is `done`.
+Expected: runbook head 与前 5 行匹配(标题块);grep 命中 1 行,最后格子是 `done`。
 
 - [ ] **Step 6: Commit**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/yopet"
 git add docs/setup/local-supabase.md PRD.md
@@ -394,46 +418,50 @@ The WSL recovery recipe is the high-leverage knowledge from the 2026-08-06
 Docker Desktop crash that unblocked F1; baking it into the runbook means
 the next time this WSL fingerprint appears, recovery is one search away.
 
-PRD §6 row F1 status flips ready -> done with a link to the runbook.
+PRD \u00a76 row F1 status flips ready -> done with a link to the runbook.
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-Expected: a single new commit on `main`. The diff stat should show ~100 lines added across the two files.
+Expected: 在 `main` 上新增一个 commit。diff stat 应显示两个文件合计新增约 100 行。
 
 ---
 
-## Task 5: Close issue #1 with a referencing comment
+## Task 5: 关闭 issue #1,并加引用评论
 
-**Files:** None in repo (operational — uses `gh` CLI)
+**Files:** 仓库内无文件(运营型 —— 用 `gh` CLI)
 
 **Interfaces:**
-- Consumes: Task 4's commit SHA
-- Produces: issue #1 state = `CLOSED`, with a comment pointing operators at the runbook
 
-- [ ] **Step 1: Capture the F1 commit SHA**
+- Consumes: Task 4 的 commit SHA
+- Produces: issue #1 状态 = `CLOSED`,并附一条评论指向操作者参考的 runbook
+
+- [ ] **Step 1: 抓取 F1 的 commit SHA**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/yopet"
 git log -1 --format='%H' HEAD
 ```
 
-Expected: a 40-char SHA. Copy the value — it goes in step 3's close comment.
+Expected: 一个 40 位的 SHA。复制这个值,粘到 step 3 的关闭评论里。
 
-- [ ] **Step 2: Verify issue #1 is currently OPEN**
+- [ ] **Step 2: 验证 issue #1 当前是 OPEN**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/yopet"
 gh issue view 1 --json state --jq .state
 ```
 
-Expected: `OPEN`. If already `CLOSED`, stop and ask the user — duplicate closures cause noise in the issue history.
+Expected: `OPEN`。如果已经是 `CLOSED`,停下来问用户 —— 重复关闭会让 issue 历史出现噪声。
 
-- [ ] **Step 3: Close issue #1 with a referencing comment**
+- [ ] **Step 3: 关闭 issue #1,带引用评论**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/yopet"
 gh issue close 1 -c "F1 done.
@@ -444,27 +472,28 @@ gh issue close 1 -c "F1 done.
 - closing commit: <paste Task 4's commit SHA here>"
 ```
 
-Expected: GH CLI reports `✓ Closed issue hnlisf/yopet#1`. If authentication is required and not configured, `gh` will print a URL to visit — visit it and complete the close in the browser.
+Expected: GH CLI 报告 `✓ Closed issue hnlisf/yopet#1`。如果需要鉴权但还没配置,`gh` 会打印一个 URL —— 在浏览器里访问并完成关闭。
 
-- [ ] **Step 4: Verify the close**
+- [ ] **Step 4: 验证关闭**
 
 Run:
+
 ```bash
 cd "d:/myworkspace/claude-workspace/yopet"
 gh issue view 1 --json state,closedAt,comments --jq '{state: .state, closedAt: .closedAt, commentCount: (.comments | length)}'
 ```
 
-Expected: `{ "state": "CLOSED", "closedAt": "2026-08-06T...", "commentCount": 1 }` (or higher if prior comments existed).
+Expected: `{ "state": "CLOSED", "closedAt": "2026-08-06T...", "commentCount": 1 }`(或更高,如果已有旧评论)。
 
-- [ ] **Step 5: No-commit confirmation**
+- [ ] **Step 5: 无 commit 确认**
 
-Issue close is an external state change, not a repo file change. No commit needed.
+issue 关闭是外部状态变更,不是仓库文件变更,不需要 commit。
 
 ---
 
-## Self-Review (filled inline while writing)
+## 自审(写计划时顺手填的)
 
-1. **Spec coverage:** Walked the spec — every section maps to a task: Approach steps 1–8 → Tasks 1–3; Yopet artifacts §1 (runbook) → Task 4 step 3; Yopet artifacts §2 (PRD update) → Task 4 step 4; "Completion phase" steps 9–11 in spec → Task 4 (commit) + Task 5 (close issue). Failure modes covered by retry-budget language in every operational step.
-2. **Placeholder scan:** No "TBD", no "TODO", no "implement later". Every step has explicit run commands and expected output.
-3. **Type / name consistency:** Same compose commands (`docker compose pull`, `docker compose up -d`) used in tasks 1, 2, 3, 4 step 3. Same port quartet (54321–54324) referenced in tasks 2 and 3 and the runbook. Same registry path (`HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\…`) used here and in the runbook.
-4. **Failure budget:** explicitly stated in Global Constraints and re-stated in retry-prone steps (steps that pull from network, steps that depend on container startup).
+1. **Spec 覆盖:** 走了一遍 spec —— 每节都对应到一个 task: Approach 1–8 → Tasks 1–3;Yopet 落盘产物 §1(runbook)→ Task 4 step 3;Yopet 落盘产物 §2(PRD 更新)→ Task 4 step 4;spec 中"收尾阶段"9–11 → Task 4(commit) + Task 5(关闭 issue)。失败模式都通过每个运营步骤里的重试预算语言覆盖。
+2. **占位符扫描:** 没有 "TBD"、"TODO"、"implement later"。每个 step 都有明确的 run 命令和 expected 输出。
+3. **类型/命名一致性:** 同样的 compose 命令(`docker compose pull`、`docker compose up -d`)在 tasks 1、2、3、4 step 3 都一致。同样的端口四元组(54321–54324)在 tasks 2、3 和 runbook 里都是一致引用。同样的注册表路径(`HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\…`)在 plan 和 runbook 里一致。
+4. **重试预算:** 在 Global Constraints 中明确声明,并在涉及重试的步骤(网络拉取步骤、容器启动步骤)里再次强调。
