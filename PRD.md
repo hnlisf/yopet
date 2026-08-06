@@ -1,118 +1,118 @@
-# yopet — Product Requirements Document
+# yopet — 产品需求文档
 
-> Status: v0.1 (initial draft after the first two /grill-with-docs rounds)
-> Owner: hnlisf
-> Last updated: 2026-08-03
+> 状态: v0.1(经前两轮 `/grill-with-docs` 后的初稿)
+> 负责人: hnlisf
+> 最近更新: 2026-08-03
 
-## 1. Product overview
+## 1. 产品概述
 
-**yopet** is a desktop and mobile fish-tank raising game for urban white-collar players seeking low-pressure emotional companionship. The player adopts and cares for 1–5 named fish in a single tank; each fish grows from fry to adult, is fed on a slow-decay schedule, and reacts to the player's presence based on its personality. The product prioritises ambient companionship over management-sim mechanics: nothing in yopet ever causes a fish to become sick or die.
+**yopet** 是一款面向城市白领玩家的桌面 + 移动端养鱼游戏,提供低压力的情绪陪伴。玩家在单个鱼缸里领养并照料 1–5 条命名鱼;每条鱼从鱼苗长到成鱼,按缓慢衰减节奏被喂食,并基于性格对玩家的在场做出反应。产品优先考虑氛围陪伴,而非经营模拟机制——yopet 里没有任何东西会让鱼生病或死亡。
 
-## 2. Target user
+## 2. 目标用户
 
-**Primary persona**: urban white-collar (25–45), working in tech / finance / consulting, screen-fatigued from meetings, wants a calming 5-minute break ritual, low patience for punishment-loop games. Plays during coffee, before sleep, or when stress peaks.
+**首要用户画像**:城市白领(25–45 岁),科技 / 金融 / 咨询行业,会议频繁导致屏幕疲劳,想要一个 5 分钟的平静仪式作为休息,对惩罚循环的游戏耐心低。会用在喝咖啡、睡前、或压力高峰时刻。
 
-**Anti-persona**: hardcore aquarium hobbyist who wants real biological simulation; mobile gamer chasing dopamine loops; parent looking for kids' educational content.
+**反向画像**:硬核水族箱爱好者(想要真实生物模拟);追求多巴胺循环的移动玩家;找儿童教育内容的家长。
 
-## 3. Core value prop
+## 3. 核心价值主张
 
-**精神陪伴** — the player feels a fish is noticing them and responding, without the weight of caretaking responsibility. The fish's response is ambient and mood-based, never punitive.
+**精神陪伴** — 玩家感觉一条鱼注意到了自己并做出回应,而又不承担养护责任。鱼的反应是氛围化的、情绪驱动的,绝不是惩罚性的。
 
-## 4. Platforms
+## 4. 平台
 
-- **Desktop** — Flutter desktop build (macOS / Windows / Linux)
-- **Mobile** — Flutter iOS + Android
-- **Single Flutter codebase** — see ADR-0004
-- **Backend** — Supabase, self-hosted via Docker — see ADR-0004
+- **桌面端** — Flutter 桌面构建(macOS / Windows / Linux)
+- **移动端** — Flutter iOS + Android
+- **单一 Flutter 代码库** — 见 ADR-0004
+- **后端** — Supabase,通过 Docker 自托管 — 见 ADR-0004
 
-## 5. User journey (canonical happy path)
+## 5. 用户旅程(标准 happy path)
 
 ```
-1. Sign up          → email + password; verify via Inbucket (dev) or real email (prod)
-2. Empty tank       → DB auto-creates a tanks row on sign-up; home screen shows empty aquarium
-3. Pick a fish      → choose species (curated 8–15 palette), variant (3–5 colour/pattern per species),
-                      name it, confirm
-4. Watch it grow    → fish appears in the tank; swims based on its 1–3 randomly assigned personality
-                      traits (bold / shy / curious / lazy)
-5. Feed it          → tap fish → feed button → satiety refills (no fail state — ADR-0001)
-6. Decorate         → add stones, plants, driftwood, background (purely aesthetic; fish unaffected)
-7. Come back        → if away > 10 minutes, fish greets you (current state only — ADR-0005)
-8. Watch it grow up → fry → juvenile (~7 days) → adult (~21 days), accelerated by feeding
-9. Real weather     → grant location or pick city → real weather affects tank atmosphere
-10. Tune water temp → manual slider; fish activity nudges based on species preference match
+ 1. 注册            → 邮箱 + 密码;通过 Inbucket(dev)或真实邮箱(prod)验证
+ 2. 空鱼缸          → 注册时 DB 自动建一条 tanks;首页展示空鱼缸
+ 3. 选鱼            → 从策展的 8–15 种鱼里挑鱼种,再挑变体(每种 3–5 种颜色/花纹),
+                      起名字,确认
+ 4. 看它游          → 鱼出现在缸里;按随机分配的 1–3 个性格特征游(bold / shy /
+                      curious / lazy)
+ 5. 喂食            → 点鱼 → 喂食按钮 → 饱腹度补满(无失败状态 — ADR-0001)
+ 6. 装饰            → 加石头、水草、沉木、背景(纯审美;不影响鱼)
+ 7. 回来            → 离开 > 10 分钟时,鱼会跟你打招呼(仅当前状态 — ADR-0005)
+ 8. 看它长大        → 鱼苗 → 幼鱼(约 7 天)→ 成鱼(约 21 天),喂食可加速
+ 9. 真实天气        → 授权定位或选城市 → 真实天气影响鱼缸氛围
+10. 调水温          → 手动滑块;鱼的活跃度按鱼种偏好匹配度上下浮动
 ```
 
-## 6. Feature list (mapped to tickets)
+## 6. 功能列表(对应到 ticket)
 
-| # | Feature | Tickets | State |
+| # | 功能 | Tickets | 状态 |
 |---|---|---|---|
-| F1 | Local dev environment (Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | ready |
-| F2 | Flutter project + supabase_flutter | [#2](https://github.com/hnlisf/yopet/issues/2) | blocked by #2 |
-| F3 | Email sign-in flow | [#3](https://github.com/hnlisf/yopet/issues/3) | blocked by #3 |
-| F4 | Auto-create empty tank on sign-up | [#4](https://github.com/hnlisf/yopet/issues/4) | blocked by #3 |
-| F5 | Fish domain data seed (species / variants / traits) | [#5](https://github.com/hnlisf/yopet/issues/5) | blocked by #3 |
-| F6 | Adopt a fish (with random 1–3 personality traits) | [#6](https://github.com/hnlisf/yopet/issues/6) | blocked by #4, #5 |
-| F7 | Decoration system (place / remove, no functional effect) | [#7](https://github.com/hnlisf/yopet/issues/7) | blocked by #4 |
-| F8 | In-presence interaction + return greeting | [#8](https://github.com/hnlisf/yopet/issues/8) | blocked by #6 |
-| F9 | Feeding (satiety slow decay, no fail) | [#9](https://github.com/hnlisf/yopet/issues/9) | blocked by #6 |
-| F10 | Growth over time (fry → juvenile → adult) | [#10](https://github.com/hnlisf/yopet/issues/10) | blocked by #6 |
-| F11 | Real weather affects tank atmosphere | [#11](https://github.com/hnlisf/yopet/issues/11) | blocked by #4 |
-| F12 | Manual water-temperature control | [#12](https://github.com/hnlisf/yopet/issues/12) | blocked by #6 |
+| F1 | 本地开发环境(Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | ready |
+| F2 | Flutter 项目 + supabase_flutter | [#2](https://github.com/hnlisf/yopet/issues/2) | blocked by #2 |
+| F3 | 邮箱登录流程 | [#3](https://github.com/hnlisf/yopet/issues/3) | blocked by #3 |
+| F4 | 注册时自动建空鱼缸 | [#4](https://github.com/hnlisf/yopet/issues/4) | blocked by #3 |
+| F5 | 鱼领域数据 seed(鱼种 / 变体 / 性格) | [#5](https://github.com/hnlisf/yopet/issues/5) | blocked by #3 |
+| F6 | 领养一条鱼(随机 1–3 个性格特征) | [#6](https://github.com/hnlisf/yopet/issues/6) | blocked by #4, #5 |
+| F7 | 装饰系统(放置 / 移除,不影响功能) | [#7](https://github.com/hnlisf/yopet/issues/7) | blocked by #4 |
+| F8 | 在场互动 + 回来问候 | [#8](https://github.com/hnlisf/yopet/issues/8) | blocked by #6 |
+| F9 | 喂食(饱腹度缓慢衰减,无失败) | [#9](https://github.com/hnlisf/yopet/issues/9) | blocked by #6 |
+| F10 | 随时间成长(鱼苗 → 幼鱼 → 成鱼) | [#10](https://github.com/hnlisf/yopet/issues/10) | blocked by #6 |
+| F11 | 真实天气影响鱼缸氛围 | [#11](https://github.com/hnlisf/yopet/issues/11) | blocked by #4 |
+| F12 | 手动调水温 | [#12](https://github.com/hnlisf/yopet/issues/12) | blocked by #6 |
 
-### 6.1 Inserted phase — UI 原型 (between F2 and F3)
+### 6.1 插入的阶段 — UI 原型(在 F2 与 F3 之间)
 
-There is a deliberate cross-cutting phase inserted between F2 (Flutter scaffold) and F3 (sign-in flow) that is **not** a numbered F-row, because it is design-validation rather than business functionality.
+在 F2(Flutter scaffold)与 F3(登录流程)之间,刻意插入了一个跨切面阶段,它**不**是带编号的 F 行,因为它是设计验证,不是业务功能。
 
 | | |
 |---|---|
-| **Scope** | Take [docs/design/ui-design.md](docs/design/ui-design.md) from v0.1 ASCII sketches to runnable Flutter screens — dark canvas, palette tokens, font pair (Fraunces + Manrope), fish-glow signature. Validate on real desktop + mobile that the dark + cyan glow reads correctly before any feature work touches UI. |
-| **In scope** | Implement `theme/tokens.dart`, `theme/typography.dart`, `widgets/tank_canvas.dart` skeleton; bring up the home/tank, sign-in, fish-picker, fish-detail, decoration-drawer screens as low-fidelity shells; lock the copy register by writing it into code, not just docs. |
-| **Out of scope** | Wiring to Supabase, business logic, growth/feed/weather/temperature logic (these are F3–F12). No new visual-direction decisions — every visual choice must trace back to `ui-design.md`. |
-| **State** | scheduled (gated on F2 done) |
-| **Origin** | Brainstorm 2026-08-06: leads to lower UI rework on F3–F12 because the dark+glow direction is validated in code, not just ASCII, before any feature touches it. Recorded here so the F2/F3 ordering is explicit, not implicit. |
+| **范围** | 把 [docs/design/ui-design.md](docs/design/ui-design.md) 从 v0.1 的 ASCII 草图升级为可运行的 Flutter 屏——暗色画布、调色板 token、字体配对(Fraunces + Manrope)、鱼的 glow 签名。在真实的桌面 + 移动端验证"暗色 + 青色 glow"能否正确呈现,然后才让任何 feature 触碰 UI。 |
+| **范围内** | 实现 `theme/tokens.dart`、`theme/typography.dart`、`widgets/tank_canvas.dart` 骨架;把首页/鱼缸、登录、选鱼、鱼详情、装饰抽屉这五个屏做成低保真 shell;把 copy register 落到代码里,不只是文档里。 |
+| **范围外** | 接 Supabase、业务逻辑、成长/喂食/天气/水温逻辑(那些是 F3–F12)。不做任何新的视觉方向决策——每个视觉选择必须回溯到 `ui-design.md`。 |
+| **状态** | scheduled(待 F2 完成) |
+| **起源** | 2026-08-06 的 brainstorm:让 F3–F12 的 UI 返工更少,因为暗色 + glow 的方向在 feature 触碰之前已经在代码里验证过,而不仅在 ASCII 里。把它记在这里,让 F2/F3 的顺序显式而非隐式。 |
 
-## 7. Non-goals (deliberately out of scope)
+## 7. 非目标(刻意排除的范围)
 
-Each maps to a recorded decision.
+每条对应一条已记录决策。
 
-- **No fish sickness or death** under any system state → ADR-0001
-- **No historical memory for fish** (no anniversaries, no "I missed you") → ADR-0005
-- **No multi-tank or tank upgrades**; one tank, ≤ 5 fish, decoration-only → ADR-0003 + CONTEXT.md 装饰 term
-- **No ORM-tier query flexibility questions** (decided Supabase/Postgres, not MySQL/Firestore) → ADR-0004
+- **鱼不会生病或死亡**,任何系统状态下都不 → ADR-0001
+- **鱼不做历史记忆**(无周年、无"我想你了") → ADR-0005
+- **无多鱼缸或鱼缸升级**;一个鱼缸,≤ 5 条鱼,只有装饰 → ADR-0003 + CONTEXT.md 装饰 term
+- **不讨论 ORM 层的查询灵活性**(已定 Supabase/Postgres,不选 MySQL/Firestore) → ADR-0004
 
-## 8. Design decisions
+## 8. 设计决策
 
-See `docs/adr/` for the full record.
+完整记录见 `docs/adr/`。
 
-| ADR | Decision |
+| ADR | 决策 |
 |---|---|
-| [0001](docs/adr/0001-no-punishment-principle.md) | No-punishment principle |
-| [0002](docs/adr/0002-cloud-sync-with-account.md) | Multi-device sync via cloud account |
-| [0003](docs/adr/0003-tank-capacity-one-to-five.md) | Tank capacity 1–5 |
-| [0004](docs/adr/0004-backend-supabase-self-hosted.md) | Backend = Supabase, self-hosted |
-| [0005](docs/adr/0005-fish-companion-current-state-only.md) | Fish companion = current state only |
+| [0001](docs/adr/0001-no-punishment-principle.md) | 无惩罚原则 |
+| [0002](docs/adr/0002-cloud-sync-with-account.md) | 通过云账号做多设备同步 |
+| [0003](docs/adr/0003-tank-capacity-one-to-five.md) | 鱼缸容量 1–5 |
+| [0004](docs/adr/0004-backend-supabase-self-hosted.md) | 后端 = Supabase,自托管 |
+| [0005](docs/adr/0005-fish-companion-current-state-only.md) | 鱼的陪伴 = 仅当前状态 |
 
-## 9. Domain glossary
+## 9. 领域术语表
 
-See [`CONTEXT.md`](CONTEXT.md) for the 13 domain terms (鱼缸, 鱼, 鱼种, 变体, 城市位置, 天气感知, 喂食, 饱腹度, 水温, 成长阶段, 装饰, 性格特征, 互动反应). All implementation and tickets must use this vocabulary — no synonyms.
+见 [`CONTEXT.md`](CONTEXT.md) 的 13 个领域术语(鱼缸、鱼、鱼种、变体、城市位置、天气感知、喂食、饱腹度、水温、成长阶段、装饰、性格特征、互动反应)。所有实现和 ticket 必须用这套词汇——不用同义词。
 
-## 10. Open questions (deferred to v2)
+## 10. 开放问题(推迟到 v2)
 
-These came up during /grill-with-docs and are explicitly deferred:
+这些在 `/grill-with-docs` 过程中出现过,显式推迟:
 
-- Monetization (free / one-time / subscription / IAP for new species)
-- Localisation (Chinese-only MVP; English later)
-- Accessibility (color-blind mode, font-size scaling, screen reader)
-- Push notifications ("fish is hungry" reminder copy; off-by-default for low-pressure ethos)
-- Ambient sound / background music
-- Account providers (Apple ID, Google, etc. — email/password MVP only)
-- Distribution channels (App Store / Google Play / sideload-only)
+- 商业模式(免费 / 一次性 / 订阅 / IAP 新鱼种)
+- 本地化(中文 only MVP;英文后期)
+- 无障碍(色盲模式、字号缩放、屏幕阅读器)
+- 推送通知("鱼饿了"提醒文案;为低压力基调默认关闭)
+- 环境音 / 背景音乐
+- 账号提供方(Apple ID、Google 等 —— MVP 仅邮箱/密码)
+- 分发渠道(App Store / Google Play / 仅 sideload)
 
-## 11. Success metrics (placeholder, MVP)
+## 11. 成功指标(MVP 占位)
 
-Qualitative for v0.1; quantitative after first 100 users:
+v0.1 定性;前 100 用户后定量:
 
-- A new user completes sign-up → adopts a fish → sees it in their tank **within 5 minutes**
-- A returning user notices the greeting animation after being away > 10 min
-- The product feels calm — no fail states, no punishment, no urgency
-- No critical crashes in a 30-minute idle session
+- 新用户在 **5 分钟内**完成注册 → 领养鱼 → 在鱼缸里看到它
+- 老用户离开 > 10 分钟后回来,会注意到问候动画
+- 产品感觉平静——无失败状态、无惩罚、无紧迫感
+- 30 分钟闲置 session 无重大崩溃
