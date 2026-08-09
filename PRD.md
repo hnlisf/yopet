@@ -46,7 +46,7 @@
 
 | # | 功能 | Tickets | 状态 |
 |---|---|---|---|
-| F1 | 本地开发环境(Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | ready |
+| F1 | 本地开发环境(Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | [done](./docs/setup/local-supabase.md) |
 | F2 | Flutter 项目 + supabase_flutter | [#2](https://github.com/hnlisf/yopet/issues/2) | blocked by #2 |
 | F3 | 邮箱登录流程 | [#3](https://github.com/hnlisf/yopet/issues/3) | blocked by #3 |
 | F4 | 注册时自动建空鱼缸 | [#4](https://github.com/hnlisf/yopet/issues/4) | blocked by #3 |
