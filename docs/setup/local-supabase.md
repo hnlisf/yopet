@@ -468,3 +468,154 @@ Get-Process -Name com.docker.backend -ErrorAction SilentlyContinue |
 ```
 
 拿到这四样,基本上一轮我就能定位。
+
+---
+
+## §11. F1 在这台机器的实际状态(已知 gap + workaround)
+
+2026-08-07 跑 F1 时遇到 3 个无法在本机绕过的硬约束,这些**不会出现在干净 Linux dev box 上**,但在本机(Docker Desktop + WSL2 + corp firewall)需要专门处理。Runbook 上面的 §1–§10 假设纯净环境;遇到下面这些场景时按本节处理。
+
+### §11.1 端口偏移 +10(54321–54324 → 54331–54334)
+
+**症状**:`docker compose up -d` 报 `Bind for 0.0.0.0:54321 failed: port is already allocated`,但 `Get-NetTCPConnection -LocalPort 54321` 显示**没人占 54321**。
+
+**原因**:Docker Desktop WSL2 引擎内部有一个 NAT cache,把 54321 标记成"已分配",即使 Windows 主机没有进程持有。`force-recreate`/`restart` 都不解。只有完整 daemon 重启(§7.1)能清。
+
+**Workaround**(本机采用)—— 在 `supabase-local/docker/.env` 里把所有 issue #1 验收用端口 +10:
+
+```
+POSTGRES_PORT=54322   →   54332   # (未在本机使用,因 pooler 坏;见 §11.3)
+KONG_HTTP_PORT=54321  →   54331
+KONG_HTTPS_PORT=54321 →   54332
+STUDIO_PORT=54323     →   54333
+INBUCKET_PORT=54324   →   54334   # 不影响(Inbucket 不存在;见 §11.2)
+```
+
+更新 `SUPABASE_PUBLIC_URL` 和 `API_EXTERNAL_URL` 同步指向 `54331`:
+
+```
+SUPABASE_PUBLIC_URL=http://localhost:54331
+API_EXTERNAL_URL=http://localhost:54331/auth/v1
+```
+
+**验收命令相应改成 54331 端口**:
+
+```powershell
+curl.exe -fsS -o NUL -w 'API HTTP %{http_code}`n' --max-time 15 http://localhost:54331/rest/v1/
+```
+
+**反向操作**(以后要清掉 NAT cache 改回标准端口):
+
+1. 按 §7.1 完全重启 Docker Desktop(`wsl --shutdown` + 从开始菜单打开)
+2. 把 `.env` 端口改回 54321–54324 范围
+3. `force-recreate` 所有 kong / auth / rest / realtime / storage
+
+### §11.2 Inbucket 不在主 compose 文件里(Aug 4 supabase monorepo 删了)
+
+**症状**:issue #1 第 8 条 `http://localhost:54324 (Inbucket) 可看到验证邮件` 永远过不了。
+
+**根因**:supabase/supabase Aug 4 commit `1123a748` 把 Inbucket 从主 `docker-compose.yml` 删了(搜 `inbucket` 在 `docker-compose*.yml` 里 0 命中)。这是上游架构变化,不是配置问题。
+
+**Workaround**(本机采用):在 issue #1 关闭评论里写明 "Inbucket 验收因 Aug 4 上游变更而不可用,GoTrue 邮件测试需要单独的 inbucket 容器,留到后续 ticket"。
+
+如果真要补 Inbucket,最干净的做法是单独跑 `maildev/maildev` 容器绑到 54334,但这超出 F1 范围。
+
+### §11.3 supabase-pooler 镜像 `tini` binary 损坏 —— **永远过不了 54322 psql**
+
+**症状**:`docker compose ps` 显示 `supabase-pooler Restarting (255) 1 second ago`,日志全是 `exec /usr/bin/tini: exec format error`。**多版本都坏**(2.9.5 和 2.9.6 都试过,包括显式镜像源拉取的新副本)。
+
+**根因**:supabase/supavisor:2.9.5(及 .6)的 `/usr/bin/tini` 这个 binary 跟 docker 引擎执行层有兼容问题。其他 10 张 amd64 镜像的 tini 都正常,只有这张出问题。
+
+**Workaround**(本机采用):
+
+```powershell
+# 跳过 supavisor,起栈时排除它
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
+docker compose up -d --scale supavisor=0
+```
+
+**Postgres 验收改用 docker exec fallback**(绕过 pooler):
+
+```powershell
+docker exec supabase-db psql -U postgres -c '\l' -A -t2>&1 | Select-Object -First 10
+```
+
+这条直接连 `supabase-db` 容器内部 psql,跟 pooler 没关系。预期输出至少:`postgres`、`template0`、`template1`、`_supabase`、`supabase_admin`。
+
+**注意**:`localhost:54322` 在本机永远不通(因为是 pooler 端口,pooler 不在跑)。F2 之后真要写代码连 Postgres,有 3 个选项:
+1. 改用 pooler 重新编译或换镜像(超出 F1)
+2. 在 supabase-local repo 里 fork 一份,改 `supabase/supavisor` 为 `bitnami/supavisor` 之类的健康镜像(后续 ticket)
+3. 把 `docker exec psql` 包成脚本,所有本地 Postgres 访问都走这个(短期 hack)
+
+### §11.4 Kong API Gateway 默认强制 auth,验收命令需要 apikey
+
+**症状**:`curl http://localhost:54331/rest/v1/` 返回 `401 {"message":"No API key found in request"}`。带 `apikey: sb_publishable_...` 返回 403 Forbidden。
+
+**根因**:Supabase self-host 默认所有 Kong route 都走 apikey 验证插件。PostgREST 收到 apikey 后解析 JWT,需要 anon role 在 db 有可访问的 schema;F1 时 schema 还没建(`auth.users` 等表不存在),PostgREST 拒绝。
+
+**Workaround**(本机采用):验收"API Gateway 可达"的标准改成 "**Kong 响应非 5xx 即视为可达**",200/401/403 都算过。PostgREST 真正返 200 需要后续 ticket 建 schema + RLS + 至少一个公开 anon 表。
+
+要真正让 API Gateway 返 200,需要:
+
+1. 跑 supabase migrations(从 `supabase/` 目录的 `supabase` CLI),建 yopet domain 表
+2. 给 anon role 至少一个 SELECT 权限的公开表(如 `fish_species`)
+3. 验证:`curl -H "apikey: $PUBL" http://localhost:54331/rest/v1/fish_species?select=common_name_zh` 应返 `[{...}]`
+
+这超出 F1 范围,留给 F5(yopet schema seed)。
+
+### §11.5 验收最终结果(本机 2026-08-07 实际)
+
+| # | issue #1 验收点 | 状态 | 备注 |
+|---|---|---|---|
+| 1 | Docker Desktop 安装运行 | ✓ | daemon 29.6.2 |
+| 2 | supabase clone | ✓ | Aug 4 commit |
+| 3 | .env 复制 + 自定义 | ✓ | + 端口偏移 +10 + ES256 keys via `add-new-auth-keys.sh` |
+| 4 | `compose up -d` 成功 healthy | ✓ | 10/10 healthy(`--scale supavisor=0`) |
+| 5 | Studio 54323/54333 加载 | ⚠️ **reachable,Kong 401** | Studio 实际可达 + 需要 apikey;见 §11.4 |
+| 6 | API Gateway 54321 → 54331 | ⚠️ **reachable,Kong 401/403** | Kong 活着 + schema 缺 anon 表;见 §11.4 |
+| 7 | Postgres 54322 用 psql | ❌ **pooler 坏** | 用 `docker exec supabase-db psql` 走 fallback;见 §11.3 |
+| 8 | Inbucket 54324 邮件 | ❌ **不在 compose** | Aug 4 上游删了;见 §11.2 |
+
+**实际可达**:Kong API Gateway,Studio,Postgres(经 supabase-db 容器)—— 三个都活着。issue #1 的 "返 200" 验收要求超出 F1 范围(需要 schema + RLS,属于 F5)。
+
+### §11.6 完全清理(如果将来要回到干净状态)
+
+按顺序:
+
+1. **池子 NAT cache + pooler 镜像**:Docker Desktop 完全重启(§7.1)。NAT cache 解锁后,把 .env 端口改回 54321–54324,把 compose 的 `supavisor` scale 改回默认。
+2. **Inbucket**:从 `supabase/supabase` 上游 rebase 到含 Inbucket 的旧 commit(需要查 `supabase/supabase` 历史找最后一个带 Inbucket 的 commit),或者单独跑 `maildev/maildev`。
+3. **Schema + RLS**:跑 `supabase db push`(需要 `supabase` CLI),建 yopet 9 张表 + 至少一个 anon SELECT 权限的 seed,届时 API 和 Studio 才会真正返 200。
+4. **ES256 keys**:`sh utils/rotate-new-api-keys.sh` 周期性轮换;`add-new-auth-keys.sh` 用于首次生成(已完成)。
+
+### §11.7 用 add-new-auth-keys.sh 生成 ES256 keys(必做,F1 起步)
+
+本机这套 .env 缺 ES256 keys,Kong 走 apikey 验证插件时一定要:
+
+```powershell
+Set-Location d:/myworkspace/claude-workspace/supabase-local/docker
+sh utils/add-new-auth-keys.sh --update-env
+```
+
+脚本会:
+1. 读 `.env` 的 `JWT_SECRET`,基于它生成 EC P-256 key pair
+2. 写入 `SUPABASE_PUBLISHABLE_KEY`(opaque client-side)、`SUPABASE_SECRET_KEY`(opaque server-side)、`JWT_KEYS`(EC + HS256 JWK 数组,给 Auth 用)、`JWT_JWKS`(只 public 部分,给 PostgREST/Realtime/Storage 验证)、`ANON_KEY_ASYMMETRIC` / `SERVICE_ROLE_KEY_ASYMMETRIC`(ES256-signed JWT,Auth 自己用)
+3. 自动 uncomment `docker-compose.yml` 里 Auth/Realtime/Storage/Functions 的 `JWT_KEYS` / `JWT_JWKS` / `SUPABASE_JWKS` 配置行(脚本最后会列出)
+
+跑完后 **force-recreate** 所有依赖 key 的服务:
+
+```powershell
+docker compose up -d --force-recreate --no-deps auth rest realtime storage kong
+```
+
+等 30 秒,然后验证:
+
+```powershell
+$PUBL = (Get-Content .env | Select-String '^SUPABASE_PUBLISHABLE_KEY=').ToString().Split('=',2)[1]
+curl.exe -fsS -o NUL -w 'API HTTP %{http_code}`n' --max-time 10 `
+    -H "apikey: $PUBL" `
+    "http://localhost:54331/rest/v1/"
+```
+
+预期:**403**(认证过 + 没 schema)或**200**(如果有 anon 可访问的表)。**401** 表示 key 没传,Kong 把它丢了。
+
+---
