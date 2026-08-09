@@ -24,3 +24,26 @@ venv/
 .env.local
 .env.*.local
 *.pem
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+macos/Pods/
+macos/Flutter/ephemeral/
+macos/Flutter/Flutter.framework
+macos/Flutter/Flutter.podspec
+windows/flutter/ephemeral/
+windows/flutter/Flutter.dll
+windows/flutter/Flutter.exe
+android/.gradle/
+android/local.properties
+android/app/release/
+android/key.properties
+# 故意 commit pubspec.lock(社区惯例,锁定依赖版本)
