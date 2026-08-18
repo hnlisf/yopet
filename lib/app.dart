@@ -4,8 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router.dart';
 
 /// Root widget for yopet. Composes:
-///   * [ProviderScope] for Riverpod
 ///   * [MaterialApp.router] for go_router
+///
+/// [YopetApp] is a [ConsumerWidget] that reads the [GoRouter] from
+/// `routerProvider` via `ref.watch(routerProvider)`. This requires a
+/// [ProviderScope] somewhere above it in the widget tree — that
+/// lives in `main.dart` (production) or in the test pumpWidget call
+/// (tests). [YopetApp] itself does not create a [ProviderScope].
 ///
 /// `main.dart` is responsible for any one-time setup that must happen
 /// *before* this widget builds (currently: `Supabase.initialize`).
@@ -16,13 +21,11 @@ class YopetApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ProviderScope(
-      child: MaterialApp.router(
-        title: 'yopet',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark(useMaterial3: true),
-        routerConfig: ref.watch(routerProvider),
-      ),
+    return MaterialApp.router(
+      title: 'yopet',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(useMaterial3: true),
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }
