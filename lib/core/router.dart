@@ -8,26 +8,27 @@ import '../splash_screen.dart';
 
 /// App-level router.
 ///
-/// F2: single route (`/` → [SplashScreen]).
-/// F3: three routes — `/sign-in`, `/home`, plus `/` that redirects
-/// to `/sign-in` when there's no session or to `/home` when there is.
-/// The redirect re-evaluates on every build (cheap, computed from
-/// `currentUserProvider`) so a sign-in / sign-out anywhere in the
-/// app flips the root destination immediately.
+/// Three routes:
+///   * `/`          — splash (transient; redirect below fires on first
+///                    build to bounce the user to the right place)
+///   * `/sign-in`   — AuthScreen (sign-in / sign-up toggle)
+///   * `/home`      — HomeScreen (email + Sign out)
+///
+/// Redirect rules:
+///   * Unauthenticated → must land on /sign-in
+///   * Authenticated   → must land on /home
+/// Re-evaluated on every build (`ref.read` is cheap, computed on
+/// demand), so sign-in / sign-out in any feature flips the root
+/// destination immediately.
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
       final user = ref.read(currentUserProvider);
-      final loggingIn = state.matchedLocation == '/sign-in';
-      // Unauthenticated → must be on /sign-in. Anywhere else bounces.
       if (user == null) {
-        return loggingIn ? null : '/sign-in';
+        return state.matchedLocation == '/sign-in' ? null : '/sign-in';
       }
-      // Authenticated → must be on /home (or a future protected route).
-      // If the user is still on /sign-in, push them home.
-      if (loggingIn) return '/home';
-      return null;
+      return '/home';
     },
     routes: [
       GoRoute(
