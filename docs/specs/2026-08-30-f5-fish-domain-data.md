@@ -1,13 +1,13 @@
 # F5 — Fish domain data seed (species / variants / personality traits)
 
-> Status: ready-for-agent
+> Status: in-progress
 > Parent issue: [yopet#5](https://github.com/hnlisf/yopet/issues/5) (鱼种 / 变体 / 性格特征 domain data seed)
 > Depends on: F3 (issue #3 closed) — done (RLS helpers + auth.uid() are wired)
 > Implements: PRD §6.5 (fish_species / fish_variants / personality_traits tables)
 
 ## Context
 
-F3 wired sign-in. F4 created a per-user empty tank. F6 (领养鱼, issue #6) needs **fish to adopt from** — that's what F5 ships. Three global tables that any authenticated user can read but nobody can write to (the app is read-only at runtime; seed data lives in SQL).
+F3 wired sign-in. F4 created a per-user empty tank. F6 (领养鱼, issue #6) needs **fish to adopt from** — that's what F5 ships. Three global tables that any authenticated user can read but nobody can write to (the app is read-only at runtime; reference data lives in SQL).
 
 The PRD §6.5 schema is the source of truth; F5 hardens it for production, seeds 8+ species with 3-5 variants each, and 4 personality traits. Flutter does nothing for F5 (the data is fetched later by F6). F5 is **all DB work**.
 
@@ -27,8 +27,8 @@ Three tables in `postgres` (where F3 profiles + F4 tanks live; GoTrue + future R
 ```sql
 -- personality_traits: 4 reference rows (bold, shy, curious, lazy)
 create table public.personality_traits (
-  code text primary key
-    check (code in ('bold','shy','curious','lazy')),
+  id uuid primary key,
+  code text not null unique check (code in ('bold','shy','curious','lazy')),
   name_zh text not null,
   name_en text not null,
   description text not null,
@@ -110,9 +110,9 @@ supabase db reset
   ↓
 fresh postgres DB
   ↓
-migrations/*.sql run (create tables + RLS)
+migrations/*.sql run (F3/F4 + F5 create tables + RLS)
   ↓
-seed.sql run (insert 4 traits + 8 species + 24 variants)
+seed.sql run (insert 4 traits + 8 species + 24+ variants)
   ↓
 Authenticated user queries public.fish_species
   ↓
@@ -127,9 +127,9 @@ Result returned
 
 Per F3 / F4 lessons: the fish tables live in `postgres` (where GoTrue + the existing F3 profiles + F4 tanks already are). `auth.uid()` and `auth.role()` RLS helpers are populated by the supabase-auth GoTrue container, so they work the same way regardless of which DB.
 
-### Why text IDs, not UUIDs
+### Stable IDs: text for catalogue items, UUID for traits
 
-`fish_species.id` is `text` (e.g. `'goldfish'`, `'koi'`), not UUID. The PRD §6.5 used text IDs and F5 honours that. The benefit: a Flutter enum like `enum FishSpeciesId { goldfish, guppy, ... }` maps 1:1 to the DB value. UUIDs would force a string<->UUID mapping layer. The trade-off: text IDs are not auto-generated, so the seed is the source of truth.
+`fish_species.id` and `fish_variants.id` are text (for example `'goldfish'` and `'goldfish_classic'`), so Flutter can map them directly to catalogue and asset identifiers. `personality_traits.id` is a stable UUID, while its unique `code` remains the readable business key. This matches F6's `fish.traits uuid[]` contract without forcing future fish rows to store string codes.
 
 ### Color hex regex constraint
 
@@ -156,12 +156,12 @@ The issue says "all authenticated user can read, RLS limited to read-only". Impl
 
 | acceptance | spec landing |
 |---|---|
-| fish_species 表 | `create table public.fish_species` |
-| fish_variants 表 | `create table public.fish_variants` |
-| personality_traits 表 | `create table public.personality_traits` |
-| seed ≥ 8 species + 3-5 variants + ≥ 4 traits | seed.sql inline `insert into` statements |
-| RLS: auth read only, no write | 3 SELECT policies, no write policies |
-| supabase/seed.sql 文件 | `supabase-local/supabase/seed.sql` |
+| fish_species 表 | `supabase/migrations/20260831000000_f5_fish_domain.sql` |
+| fish_variants 表 | `supabase/migrations/20260831000000_f5_fish_domain.sql` |
+| personality_traits 表（UUID 主键，code 唯一） | `supabase/migrations/20260831000000_f5_fish_domain.sql` |
+| seed ≥ 8 species + 3-5 variants + ≥ 4 traits | `supabase/seed.sql` inline `insert into` statements |
+| RLS: auth read only, no write | F5 migration 中的 3 条 SELECT policy |
+| 自动化验证 | `supabase/tests/f5_fish_domain.sql` |
 | Studio 验证 | T3 e2e: connect Studio to `postgres` DB, confirm 8 / 24+ / 4 row counts |
 
 ## Out of scope
@@ -177,7 +177,7 @@ The issue says "all authenticated user can read, RLS limited to read-only". Impl
 - **Postgres DB, not _supabase** — applies the F3 / F4 lesson. Apply with `docker exec -i supabase-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < supabase-local/supabase/seed.sql` (after running the migration).
 - **Supabase db reset auto-runs seed.sql** when the file is in `supabase/seed.sql` of the supabase project (the `supabase-local` repo's `supabase/` directory). Verified by running `supabase db reset` locally and checking the 3 tables.
 - **Realtime publication NOT added** — fish data is global / read-only and rarely changes. F6 reads via plain `from('fish_species').select()` not via `stream()`. If we later add a "new species available" push, we add `alter publication supabase_realtime add table public.fish_species;` in a separate migration.
-- **`uuid-ossp` / `pgcrypto` not required** — we use text IDs, so no extension dependency. `gen_random_uuid()` is in `pgcrypto` in newer Postgres but F5 doesn't use it.
+- **`uuid-ossp` / `pgcrypto` not required** — F5 uses four fixed UUID literals for the immutable trait catalogue, so it has no UUID-generation extension dependency.
 
 ## Reference
 
