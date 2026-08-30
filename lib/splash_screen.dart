@@ -59,24 +59,25 @@ class SplashScreen extends StatelessWidget {
               decoration: BoxDecoration(),
               child: Text(
                 'yopet',
-                style: GoogleFonts.fraunces(
-                  color: Tokens.splashGlow,
-                  fontSize: 48,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                  height: 1.1,
-                ).copyWith(
-                  shadows: [
-                    Shadow(
-                      color: Tokens.splashGlow.withValues(alpha: 0.45),
-                      blurRadius: _glowBlur,
+                style:
+                    GoogleFonts.fraunces(
+                      color: Tokens.splashGlow,
+                      fontSize: 48,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                      height: 1.1,
+                    ).copyWith(
+                      shadows: [
+                        Shadow(
+                          color: Tokens.splashGlow.withValues(alpha: 0.45),
+                          blurRadius: _glowBlur,
+                        ),
+                        Shadow(
+                          color: Tokens.splashGlow.withValues(alpha: 0.25),
+                          blurRadius: _glowBlur * 2,
+                        ),
+                      ],
                     ),
-                    Shadow(
-                      color: Tokens.splashGlow.withValues(alpha: 0.25),
-                      blurRadius: _glowBlur * 2,
-                    ),
-                  ],
-                ),
               ),
             ),
           ),

@@ -139,9 +139,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       style: FilledButton.styleFrom(
                         backgroundColor: Tokens.tankGlow,
                         foregroundColor: Tokens.primaryBg,
-                        textStyle: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       child: _busy
                           ? const SizedBox(
@@ -189,9 +187,7 @@ class _ToggleBar extends StatelessWidget {
         for (final m in AuthMode.values)
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(
-                right: m == AuthMode.signIn ? 8 : 0,
-              ),
+              padding: EdgeInsets.only(right: m == AuthMode.signIn ? 8 : 0),
               child: _TogglePill(
                 label: m == AuthMode.signIn ? '登录' : '注册',
                 selected: m == mode,

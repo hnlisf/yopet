@@ -45,16 +45,11 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     )
                   else
-                    _EmptyTankCard(
-                      onPickFish: () => context.go('/pick-fish'),
-                    ),
+                    _EmptyTankCard(onPickFish: () => context.go('/pick-fish')),
                   const SizedBox(height: 24),
                   Text(
                     email,
-                    style: const TextStyle(
-                      color: Tokens.textDim,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(color: Tokens.textDim, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),

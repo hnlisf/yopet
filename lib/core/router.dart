@@ -36,23 +36,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       return '/home';
     },
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (_, _) => const SplashScreen(),
-      ),
-      GoRoute(
-        path: '/sign-in',
-        builder: (_, _) => const AuthScreen(),
-      ),
-      GoRoute(
-        path: '/home',
-        builder: (_, _) => const HomeScreen(),
-      ),
+      GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
+      GoRoute(path: '/sign-in', builder: (_, _) => const AuthScreen()),
+      GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
       GoRoute(
         path: '/pick-fish',
-        builder: (_, _) => const Scaffold(
-          body: Center(child: Text('F6 will fill this')),
-        ),
+        builder: (_, _) =>
+            const Scaffold(body: Center(child: Text('F6 will fill this'))),
       ),
     ],
   );
