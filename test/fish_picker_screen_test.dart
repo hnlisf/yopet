@@ -110,6 +110,12 @@ class _FakeFishRepository implements FishRepository {
   }
 
   @override
+  Future<void> updateLastSeen({
+    required Iterable<String> fishIds,
+    required DateTime at,
+  }) async {}
+
+  @override
   Future<FishInstance> adoptFish({
     required String tankId,
     required FishSpecies species,

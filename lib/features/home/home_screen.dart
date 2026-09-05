@@ -17,6 +17,7 @@ import '../decorations/tank_decoration.dart';
 import '../fish/fish_models.dart';
 import '../fish/fish_providers.dart';
 import '../fish/fish_sprite.dart';
+import '../presence/presence_interaction.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -55,7 +56,61 @@ class _TankHome extends ConsumerStatefulWidget {
   ConsumerState<_TankHome> createState() => _TankHomeState();
 }
 
-class _TankHomeState extends ConsumerState<_TankHome> {
+class _TankHomeState extends ConsumerState<_TankHome>
+    with WidgetsBindingObserver {
+  List<FishInstance> _visibleFish = const <FishInstance>[];
+  DateTime? _recordedLastSeenAt;
+  var _greetingToken = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      final pausedAt = DateTime.now();
+      _recordedLastSeenAt = pausedAt;
+      unawaited(_recordLastSeen(pausedAt));
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      final lastSeenAt = _recordedLastSeenAt;
+      _recordedLastSeenAt = null;
+      if (lastSeenAt != null &&
+          shouldGreetAfterAbsence(
+            lastSeenAt: lastSeenAt,
+            now: DateTime.now(),
+          ) &&
+          mounted) {
+        setState(() => _greetingToken += 1);
+      }
+    }
+  }
+
+  Future<void> _recordLastSeen(DateTime pausedAt) async {
+    try {
+      await ref
+          .read(fishRepositoryProvider)
+          .updateLastSeen(
+            fishIds: _visibleFish.map((fish) => fish.id),
+            at: pausedAt,
+          );
+    } catch (_) {
+      // Presence is ambient: a transient offline failure must not interrupt
+      // the player when they return to the tank.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final fishAsync = ref.watch(tankFishProvider(widget.tankId));
@@ -68,6 +123,7 @@ class _TankHomeState extends ConsumerState<_TankHome> {
         fishAsync.isLoading ||
         catalogAsync.isLoading ||
         decorationsAsync.isLoading;
+    _visibleFish = fish;
 
     return SafeArea(
       child: Column(
@@ -99,6 +155,7 @@ class _TankHomeState extends ConsumerState<_TankHome> {
                           decorations: decorations,
                           onMoveDecoration: _moveDecoration,
                           onRemoveDecoration: _removeDecoration,
+                          greetingToken: _greetingToken,
                         ),
                 ),
               ),
@@ -229,13 +286,14 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-class _TankScene extends StatelessWidget {
+class _TankScene extends StatefulWidget {
   const _TankScene({
     required this.fish,
     required this.catalog,
     required this.decorations,
     required this.onMoveDecoration,
     required this.onRemoveDecoration,
+    required this.greetingToken,
   });
 
   final List<FishInstance> fish;
@@ -243,50 +301,113 @@ class _TankScene extends StatelessWidget {
   final List<TankDecoration> decorations;
   final ValueChanged<(TankDecoration, Offset)> onMoveDecoration;
   final ValueChanged<TankDecoration> onRemoveDecoration;
+  final int greetingToken;
+
+  @override
+  State<_TankScene> createState() => _TankSceneState();
+}
+
+class _TankSceneState extends State<_TankScene> {
+  final Map<String, Alignment> _fishPositions = <String, Alignment>{};
+  FishTapInteraction? _interaction;
+  var _interactionId = 0;
+
+  @override
+  void didUpdateWidget(covariant _TankScene oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentIds = widget.fish.map((fish) => fish.id).toSet();
+    _fishPositions.removeWhere((fishId, _) => !currentIds.contains(fishId));
+  }
 
   @override
   Widget build(BuildContext context) {
-    final activeBackground = decorations.where(
+    final activeBackground = widget.decorations.where(
       (decoration) => decoration.type == DecorationType.background,
     );
     final backgroundPath = activeBackground.isEmpty
         ? 'assets/tank/background.png'
         : decorationForCode(activeBackground.first.code)?.assetPath ??
               'assets/tank/background.png';
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset(backgroundPath, fit: BoxFit.cover),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0x44030D18), Color(0x11030D18)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+    return LayoutBuilder(
+      builder: (context, constraints) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) => _onTankTap(details.localPosition, constraints),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(backgroundPath, fit: BoxFit.cover),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0x44030D18), Color(0x11030D18)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
             ),
-          ),
-        ),
-        Positioned.fill(
-          child: TankDecorationsLayer(
-            decorations: decorations,
-            onMove: onMoveDecoration,
-            onRemove: onRemoveDecoration,
-          ),
-        ),
-        if (fish.isEmpty) const _EmptyTankMessage(),
-        for (final item in fish)
-          if (_resolveSprite(catalog, item) case final sprite?)
-            _SwimmingFish(
-              key: ValueKey(item.id),
-              fish: item,
-              species: sprite.$1,
-              variant: sprite.$2,
-              traits: catalog.traits
-                  .where((trait) => item.traitIds.contains(trait.id))
-                  .toList(growable: false),
+            Positioned.fill(
+              child: TankDecorationsLayer(
+                decorations: widget.decorations,
+                onMove: widget.onMoveDecoration,
+                onRemove: widget.onRemoveDecoration,
+              ),
             ),
-      ],
+            if (widget.fish.isEmpty) const _EmptyTankMessage(),
+            for (final item in widget.fish)
+              if (_resolveSprite(widget.catalog, item) case final sprite?)
+                _SwimmingFish(
+                  key: ValueKey(item.id),
+                  fish: item,
+                  species: sprite.$1,
+                  variant: sprite.$2,
+                  traits: widget.catalog.traits
+                      .where((trait) => item.traitIds.contains(trait.id))
+                      .toList(growable: false),
+                  interaction: _interaction,
+                  greetingToken: widget.greetingToken,
+                  onPositionChanged: _recordFishPosition,
+                ),
+          ],
+        ),
+      ),
     );
+  }
+
+  void _onTankTap(Offset offset, BoxConstraints constraints) {
+    if (constraints.maxWidth <= 0 || constraints.maxHeight <= 0) return;
+    final position = Alignment(
+      offset.dx / constraints.maxWidth * 2 - 1,
+      offset.dy / constraints.maxHeight * 2 - 1,
+    );
+    final fishId = _hitFish(position);
+    if (fishId == null) return;
+    setState(() {
+      _interactionId += 1;
+      _interaction = FishTapInteraction(
+        id: _interactionId,
+        fishId: fishId,
+        position: position,
+      );
+    });
+  }
+
+  String? _hitFish(Alignment tapPosition) {
+    String? closestId;
+    var closestDistance = double.infinity;
+    for (final entry in _fishPositions.entries) {
+      final dx = (entry.value.x - tapPosition.x) / 0.34;
+      final dy = (entry.value.y - tapPosition.y) / 0.28;
+      final distance = dx * dx + dy * dy;
+      if (distance <= 1 && distance < closestDistance) {
+        closestId = entry.key;
+        closestDistance = distance;
+      }
+    }
+    return closestId;
+  }
+
+  void _recordFishPosition(String fishId, Alignment position) {
+    _fishPositions[fishId] = position;
   }
 
   (FishSpecies, FishVariant)? _resolveSprite(
@@ -309,6 +430,9 @@ class _SwimmingFish extends StatefulWidget {
     required this.species,
     required this.variant,
     required this.traits,
+    required this.interaction,
+    required this.greetingToken,
+    required this.onPositionChanged,
     super.key,
   });
 
@@ -316,22 +440,34 @@ class _SwimmingFish extends StatefulWidget {
   final FishSpecies species;
   final FishVariant variant;
   final List<PersonalityTrait> traits;
+  final FishTapInteraction? interaction;
+  final int greetingToken;
+  final void Function(String fishId, Alignment position) onPositionChanged;
 
   @override
   State<_SwimmingFish> createState() => _SwimmingFishState();
 }
 
-class _SwimmingFishState extends State<_SwimmingFish> {
+class _SwimmingFishState extends State<_SwimmingFish>
+    with SingleTickerProviderStateMixin {
   late final Random _random;
   late Alignment _position;
   Timer? _timer;
+  Timer? _reactionTimer;
   bool _facingLeft = false;
+  FishReaction? _activeReaction;
+  late final AnimationController _tailController;
 
   @override
   void initState() {
     super.initState();
     _random = Random(_stableSeed(widget.fish.id));
     _position = _nextPosition(initial: true);
+    _tailController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
+    widget.onPositionChanged(widget.fish.id, _position);
   }
 
   @override
@@ -343,7 +479,24 @@ class _SwimmingFishState extends State<_SwimmingFish> {
   @override
   void dispose() {
     _timer?.cancel();
+    _reactionTimer?.cancel();
+    _tailController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SwimmingFish oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final interaction = widget.interaction;
+    if (interaction != null &&
+        interaction.id != oldWidget.interaction?.id &&
+        interaction.fishId == widget.fish.id) {
+      _reactToTap(interaction.position);
+    }
+    if (widget.greetingToken != oldWidget.greetingToken &&
+        widget.greetingToken > 0) {
+      _greet();
+    }
   }
 
   void _move() {
@@ -354,10 +507,63 @@ class _SwimmingFishState extends State<_SwimmingFish> {
         _facingLeft = next.x < _position.x;
         _position = next;
       });
+      widget.onPositionChanged(widget.fish.id, next);
     }
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
     final seconds = (lazy ? 7 : 4) + _random.nextInt(4);
     _timer = Timer(Duration(seconds: seconds), _move);
+  }
+
+  void _reactToTap(Alignment tapPosition) {
+    final reaction = reactionForTraitCodes(
+      widget.traits.map((trait) => trait.code),
+    );
+    if (reaction == FishReaction.lazy) return;
+    _startReaction(
+      reaction: reaction,
+      destination: reactionDestination(
+        reaction: reaction,
+        currentPosition: _position,
+        tapPosition: tapPosition,
+      ),
+      duration: const Duration(milliseconds: 1500),
+    );
+  }
+
+  void _greet() {
+    _startReaction(
+      reaction: FishReaction.greeting,
+      destination: reactionDestination(
+        reaction: FishReaction.greeting,
+        currentPosition: _position,
+        tapPosition: _position,
+      ),
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  void _startReaction({
+    required FishReaction reaction,
+    required Alignment destination,
+    required Duration duration,
+  }) {
+    _timer?.cancel();
+    _reactionTimer?.cancel();
+    _tailController.repeat(reverse: true);
+    setState(() {
+      _activeReaction = reaction;
+      _facingLeft = destination.x < _position.x;
+      _position = destination;
+    });
+    widget.onPositionChanged(widget.fish.id, destination);
+    _reactionTimer = Timer(duration, () {
+      if (!mounted) return;
+      _tailController
+        ..stop()
+        ..value = 0;
+      setState(() => _activeReaction = null);
+      _move();
+    });
   }
 
   Alignment _nextPosition({bool initial = false}) {
@@ -394,7 +600,11 @@ class _SwimmingFishState extends State<_SwimmingFish> {
   Widget build(BuildContext context) {
     final fast = widget.traits.any((trait) => trait.code == 'bold');
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
-    final duration = Duration(seconds: lazy ? 7 : (fast ? 3 : 5));
+    final duration = _activeReaction == null
+        ? Duration(seconds: lazy ? 7 : (fast ? 3 : 5))
+        : _activeReaction == FishReaction.greeting
+        ? const Duration(seconds: 2)
+        : const Duration(milliseconds: 1500);
     return AnimatedAlign(
       alignment: _position,
       duration: MediaQuery.disableAnimationsOf(context)
@@ -406,12 +616,20 @@ class _SwimmingFishState extends State<_SwimmingFish> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            FishSprite(
-              species: widget.species,
-              variant: widget.variant,
-              growthStage: widget.fish.growthStage,
-              facingLeft: _facingLeft,
-              width: 108,
+            AnimatedBuilder(
+              animation: _tailController,
+              child: FishSprite(
+                species: widget.species,
+                variant: widget.variant,
+                growthStage: widget.fish.growthStage,
+                facingLeft: _facingLeft,
+                width: 108,
+              ),
+              builder: (context, child) => Transform.rotate(
+                alignment: const Alignment(0.62, 0),
+                angle: sin(_tailController.value * pi * 2) * 0.045,
+                child: child,
+              ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

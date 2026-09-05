@@ -13,6 +13,15 @@ abstract class FishRepository {
 
   Stream<List<FishInstance>> watchFish(String tankId);
 
+  /// Stores the last moment the player left the tank.
+  ///
+  /// This is current-state presence only. It deliberately does not create a
+  /// history row or an interaction event.
+  Future<void> updateLastSeen({
+    required Iterable<String> fishIds,
+    required DateTime at,
+  });
+
   Future<FishInstance> adoptFish({
     required String tankId,
     required FishSpecies species,
@@ -77,6 +86,19 @@ class SupabaseFishRepository implements FishRepository {
         .eq('tank_id', tankId)
         .order('created_at')
         .map((rows) => rows.map(FishInstance.fromMap).toList(growable: false));
+  }
+
+  @override
+  Future<void> updateLastSeen({
+    required Iterable<String> fishIds,
+    required DateTime at,
+  }) async {
+    final ids = fishIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return;
+    await _client
+        .from('fish')
+        .update({'last_seen_at': at.toUtc().toIso8601String()})
+        .inFilter('id', ids);
   }
 
   @override
