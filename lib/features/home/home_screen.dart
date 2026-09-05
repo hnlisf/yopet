@@ -14,6 +14,8 @@ import '../decorations/decoration_layer.dart';
 import '../decorations/decoration_providers.dart';
 import '../decorations/decoration_sheet.dart';
 import '../decorations/tank_decoration.dart';
+import '../feeding/fish_action_sheet.dart';
+import '../feeding/satiety.dart';
 import '../fish/fish_models.dart';
 import '../fish/fish_providers.dart';
 import '../fish/fish_sprite.dart';
@@ -66,6 +68,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_syncTankSatiety());
   }
 
   @override
@@ -108,6 +111,14 @@ class _TankHomeState extends ConsumerState<_TankHome>
     } catch (_) {
       // Presence is ambient: a transient offline failure must not interrupt
       // the player when they return to the tank.
+    }
+  }
+
+  Future<void> _syncTankSatiety() async {
+    try {
+      await ref.read(fishRepositoryProvider).syncTankSatiety(widget.tankId);
+    } catch (_) {
+      // The realtime fish stream still renders the last known gentle state.
     }
   }
 
@@ -155,6 +166,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
                           decorations: decorations,
                           onMoveDecoration: _moveDecoration,
                           onRemoveDecoration: _removeDecoration,
+                          onFishTapped: _openFishActions,
                           greetingToken: _greetingToken,
                         ),
                 ),
@@ -194,6 +206,14 @@ class _TankHomeState extends ConsumerState<_TankHome>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DecorationSheet(tankId: widget.tankId),
+    );
+  }
+
+  Future<void> _openFishActions(FishInstance fish) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FishActionSheet(fish: fish),
     );
   }
 
@@ -293,6 +313,7 @@ class _TankScene extends StatefulWidget {
     required this.decorations,
     required this.onMoveDecoration,
     required this.onRemoveDecoration,
+    required this.onFishTapped,
     required this.greetingToken,
   });
 
@@ -301,6 +322,7 @@ class _TankScene extends StatefulWidget {
   final List<TankDecoration> decorations;
   final ValueChanged<(TankDecoration, Offset)> onMoveDecoration;
   final ValueChanged<TankDecoration> onRemoveDecoration;
+  final ValueChanged<FishInstance> onFishTapped;
   final int greetingToken;
 
   @override
@@ -381,6 +403,14 @@ class _TankSceneState extends State<_TankScene> {
     );
     final fishId = _hitFish(position);
     if (fishId == null) return;
+    FishInstance? fish;
+    for (final item in widget.fish) {
+      if (item.id == fishId) {
+        fish = item;
+        break;
+      }
+    }
+    if (fish == null) return;
     setState(() {
       _interactionId += 1;
       _interaction = FishTapInteraction(
@@ -389,6 +419,7 @@ class _TankSceneState extends State<_TankScene> {
         position: position,
       );
     });
+    widget.onFishTapped(fish);
   }
 
   String? _hitFish(Alignment tapPosition) {
@@ -510,7 +541,8 @@ class _SwimmingFishState extends State<_SwimmingFish>
       widget.onPositionChanged(widget.fish.id, next);
     }
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
-    final seconds = (lazy ? 7 : 4) + _random.nextInt(4);
+    final sad = isLowSatiety(widget.fish.satiety);
+    final seconds = (sad ? 8 : (lazy ? 7 : 4)) + _random.nextInt(4);
     _timer = Timer(Duration(seconds: seconds), _move);
   }
 
@@ -567,6 +599,15 @@ class _SwimmingFishState extends State<_SwimmingFish>
   }
 
   Alignment _nextPosition({bool initial = false}) {
+    if (isLowSatiety(widget.fish.satiety)) {
+      final seed = _stableSeed(widget.fish.id);
+      final cornerX = seed.isEven ? -0.66 : 0.66;
+      final cornerY = seed % 3 == 0 ? -0.54 : 0.5;
+      return Alignment(
+        cornerX + (_random.nextDouble() - 0.5) * 0.16,
+        cornerY + (_random.nextDouble() - 0.5) * 0.12,
+      );
+    }
     final codes = widget.traits.map((trait) => trait.code).toSet();
     var minY = -0.7;
     var maxY = 0.62;
@@ -600,8 +641,9 @@ class _SwimmingFishState extends State<_SwimmingFish>
   Widget build(BuildContext context) {
     final fast = widget.traits.any((trait) => trait.code == 'bold');
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
+    final sad = isLowSatiety(widget.fish.satiety);
     final duration = _activeReaction == null
-        ? Duration(seconds: lazy ? 7 : (fast ? 3 : 5))
+        ? Duration(seconds: sad ? 10 : (lazy ? 7 : (fast ? 3 : 5)))
         : _activeReaction == FishReaction.greeting
         ? const Duration(seconds: 2)
         : const Duration(milliseconds: 1500);
@@ -612,7 +654,9 @@ class _SwimmingFishState extends State<_SwimmingFish>
           : duration,
       curve: Curves.easeInOutSine,
       child: Semantics(
-        label: '${widget.fish.name}正在鱼缸里游动',
+        label: sad
+            ? '${widget.fish.name}正在角落缓缓游动'
+            : '${widget.fish.name}正在鱼缸里游动',
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

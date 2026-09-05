@@ -13,6 +13,9 @@ abstract class FishRepository {
 
   Stream<List<FishInstance>> watchFish(String tankId);
 
+  /// Applies elapsed, non-punitive satiety decay when the tank opens.
+  Future<void> syncTankSatiety(String tankId);
+
   /// Stores the last moment the player left the tank.
   ///
   /// This is current-state presence only. It deliberately does not create a
@@ -21,6 +24,9 @@ abstract class FishRepository {
     required Iterable<String> fishIds,
     required DateTime at,
   });
+
+  /// Adds one standard meal and returns the server's capped fish state.
+  Future<FishInstance> feedFish(String fishId);
 
   Future<FishInstance> adoptFish({
     required String tankId,
@@ -89,6 +95,11 @@ class SupabaseFishRepository implements FishRepository {
   }
 
   @override
+  Future<void> syncTankSatiety(String tankId) {
+    return _client.rpc('sync_tank_satiety', params: {'target_tank_id': tankId});
+  }
+
+  @override
   Future<void> updateLastSeen({
     required Iterable<String> fishIds,
     required DateTime at,
@@ -99,6 +110,15 @@ class SupabaseFishRepository implements FishRepository {
         .from('fish')
         .update({'last_seen_at': at.toUtc().toIso8601String()})
         .inFilter('id', ids);
+  }
+
+  @override
+  Future<FishInstance> feedFish(String fishId) async {
+    final row = await _client.rpc(
+      'feed_fish',
+      params: {'target_fish_id': fishId},
+    );
+    return FishInstance.fromMap((row as Map).cast<String, dynamic>());
   }
 
   @override
