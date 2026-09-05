@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,69 +9,93 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/supabase.dart';
 import '../../core/theme/tokens.dart';
 import '../auth/auth_providers.dart';
+import '../fish/fish_models.dart';
+import '../fish/fish_providers.dart';
+import '../fish/fish_sprite.dart';
 
-/// Signed-in landing surface for the F4 "empty tank" state.
-///
-/// Watches [tankStreamProvider]; the spec ships an empty-tank
-/// placeholder (no fish yet) because the actual fish-picker lives in
-/// F6 (issue #6). The "选你的第一条鱼" button pushes /pick-fish, a
-/// route the F4 router has registered as a placeholder; F6 will swap
-/// the body for a real picker.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
     final tankAsync = ref.watch(tankStreamProvider);
-    final email = user?.email ?? '(signed out)';
-
     return Scaffold(
       backgroundColor: Tokens.primaryBg,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (tankAsync.isLoading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 48),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Tokens.tankGlow,
-                        ),
-                      ),
-                    )
-                  else
-                    _EmptyTankCard(onPickFish: () => context.go('/pick-fish')),
-                  const SizedBox(height: 24),
-                  Text(
-                    email,
-                    style: const TextStyle(color: Tokens.textDim, fontSize: 13),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () => _signOut(context),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Tokens.tankGlowSoft,
-                      side: const BorderSide(
-                        color: Tokens.tankGlowSoft,
-                        width: 1,
-                      ),
-                    ),
-                    child: const Text('Sign out'),
-                  ),
-                ],
+      body: tankAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: Tokens.tankGlow),
+        ),
+        error: (error, _) => const Center(
+          child: Text('鱼缸暂时没有回应', style: TextStyle(color: Tokens.text)),
+        ),
+        data: (tank) {
+          if (tank == null) {
+            return const Center(
+              child: CircularProgressIndicator(color: Tokens.tankGlow),
+            );
+          }
+          return _TankHome(tankId: tank.id);
+        },
+      ),
+    );
+  }
+}
+
+class _TankHome extends ConsumerWidget {
+  const _TankHome({required this.tankId});
+
+  final String tankId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fishAsync = ref.watch(tankFishProvider(tankId));
+    final catalogAsync = ref.watch(fishCatalogProvider);
+    final fish = fishAsync.value ?? const <FishInstance>[];
+    final catalog = catalogAsync.value;
+    final loading = fishAsync.isLoading || catalogAsync.isLoading;
+
+    return SafeArea(
+      child: Column(
+        children: [
+          _HomeHeader(count: fish.length, onSignOut: () => _signOut(context)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(color: Color(0xFF0D2636)),
+                  child: loading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: Tokens.tankGlow,
+                          ),
+                        )
+                      : catalog == null
+                      ? const Center(
+                          child: Text(
+                            '鱼种图鉴加载失败',
+                            style: TextStyle(color: Tokens.text),
+                          ),
+                        )
+                      : _TankScene(fish: fish, catalog: catalog),
+                ),
               ),
             ),
           ),
-        ),
+          _TankNavigation(
+            fishCount: fish.length,
+            onAdopt: () {
+              if (fish.length >= 5) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('鱼缸已经住满 5 条鱼啦')));
+              } else {
+                context.go('/pick-fish');
+              }
+            },
+          ),
+        ],
       ),
     );
   }
@@ -77,62 +104,324 @@ class HomeScreen extends ConsumerWidget {
     try {
       await getSupabase().auth.signOut();
     } on AuthException catch (_) {
-      // User is already signed out; router redirect handles the
-      // user-visible transition.
+      // Router handles an already-ended session.
     }
     if (context.mounted) context.go('/sign-in');
   }
 }
 
-/// "还没有鱼" empty-state card per docs/design/ui-design.md §9 copy
-/// register + the F4 spec.
-class _EmptyTankCard extends StatelessWidget {
-  const _EmptyTankCard({required this.onPickFish});
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.count, required this.onSignOut});
 
-  final VoidCallback onPickFish;
+  final int count;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 10, 14, 4),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'yopet',
+              style: TextStyle(
+                color: Tokens.text,
+                fontFamily: 'serif',
+                fontSize: 38,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              '$count / 5',
+              style: const TextStyle(
+                color: Tokens.text,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            iconColor: Tokens.textDim,
+            color: Tokens.surface,
+            onSelected: (_) => onSignOut(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'sign-out', child: Text('退出登录')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TankScene extends StatelessWidget {
+  const _TankScene({required this.fish, required this.catalog});
+
+  final List<FishInstance> fish;
+  final FishCatalog catalog;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset('assets/tank/background.png', fit: BoxFit.cover),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0x44030D18), Color(0x11030D18)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+        if (fish.isEmpty) const _EmptyTankMessage(),
+        for (final item in fish)
+          if (_resolveSprite(catalog, item) case final sprite?)
+            _SwimmingFish(
+              key: ValueKey(item.id),
+              fish: item,
+              species: sprite.$1,
+              variant: sprite.$2,
+              traits: catalog.traits
+                  .where((trait) => item.traitIds.contains(trait.id))
+                  .toList(growable: false),
+            ),
+      ],
+    );
+  }
+
+  (FishSpecies, FishVariant)? _resolveSprite(
+    FishCatalog catalog,
+    FishInstance fish,
+  ) {
+    for (final species in catalog.species) {
+      if (species.id != fish.speciesId) continue;
+      for (final variant in species.variants) {
+        if (variant.id == fish.variantId) return (species, variant);
+      }
+    }
+    return null;
+  }
+}
+
+class _SwimmingFish extends StatefulWidget {
+  const _SwimmingFish({
+    required this.fish,
+    required this.species,
+    required this.variant,
+    required this.traits,
+    super.key,
+  });
+
+  final FishInstance fish;
+  final FishSpecies species;
+  final FishVariant variant;
+  final List<PersonalityTrait> traits;
+
+  @override
+  State<_SwimmingFish> createState() => _SwimmingFishState();
+}
+
+class _SwimmingFishState extends State<_SwimmingFish> {
+  late final Random _random;
+  late Alignment _position;
+  Timer? _timer;
+  bool _facingLeft = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _random = Random(_stableSeed(widget.fish.id));
+    _position = _nextPosition(initial: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _timer ??= Timer(const Duration(milliseconds: 600), _move);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _move() {
+    if (!mounted) return;
+    if (!MediaQuery.disableAnimationsOf(context)) {
+      final next = _nextPosition();
+      setState(() {
+        _facingLeft = next.x < _position.x;
+        _position = next;
+      });
+    }
+    final lazy = widget.traits.any((trait) => trait.code == 'lazy');
+    final seconds = (lazy ? 7 : 4) + _random.nextInt(4);
+    _timer = Timer(Duration(seconds: seconds), _move);
+  }
+
+  Alignment _nextPosition({bool initial = false}) {
+    final codes = widget.traits.map((trait) => trait.code).toSet();
+    var minY = -0.7;
+    var maxY = 0.62;
+    if (codes.contains('shy')) {
+      minY = 0.15;
+      maxY = 0.72;
+    } else if (codes.contains('bold')) {
+      minY = -0.78;
+      maxY = 0.05;
+    } else if (codes.contains('lazy')) {
+      minY = 0.05;
+      maxY = 0.48;
+    } else if (codes.contains('curious')) {
+      minY = -0.42;
+      maxY = 0.42;
+    }
+    final x = -0.78 + _random.nextDouble() * 1.56;
+    final y = minY + _random.nextDouble() * (maxY - minY);
+    return Alignment(initial ? x * 0.85 : x, y);
+  }
+
+  static int _stableSeed(String value) {
+    var result = 17;
+    for (final unit in value.codeUnits) {
+      result = 37 * result + unit;
+    }
+    return result & 0x7fffffff;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fast = widget.traits.any((trait) => trait.code == 'bold');
+    final lazy = widget.traits.any((trait) => trait.code == 'lazy');
+    final duration = Duration(seconds: lazy ? 7 : (fast ? 3 : 5));
+    return AnimatedAlign(
+      alignment: _position,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : duration,
+      curve: Curves.easeInOutSine,
+      child: Semantics(
+        label: '${widget.fish.name}正在鱼缸里游动',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FishSprite(
+              species: widget.species,
+              variant: widget.variant,
+              growthStage: widget.fish.growthStage,
+              facingLeft: _facingLeft,
+              width: 108,
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Tokens.primaryBg.withValues(alpha: 0.58),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                widget.fish.name,
+                style: const TextStyle(color: Tokens.text, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyTankMessage extends StatelessWidget {
+  const _EmptyTankMessage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Align(
+      alignment: Alignment(-0.45, 0.05),
+      child: Text(
+        '鱼缸很安静\n领养第一条鱼吧。',
+        style: TextStyle(color: Tokens.text, fontSize: 18, height: 1.65),
+      ),
+    );
+  }
+}
+
+class _TankNavigation extends StatelessWidget {
+  const _TankNavigation({required this.fishCount, required this.onAdopt});
+
+  final int fishCount;
+  final VoidCallback onAdopt;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Tokens.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: Tokens.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.18)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          const Text(
-            '还没有鱼',
-            style: TextStyle(
-              color: Tokens.text,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '从下方选一只开始',
-            style: TextStyle(color: Tokens.textDim, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 48,
-            child: FilledButton(
-              onPressed: onPickFish,
-              style: FilledButton.styleFrom(
-                backgroundColor: Tokens.tankGlow,
-                foregroundColor: Tokens.primaryBg,
-                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          const _NavItem(icon: Icons.water_drop_outlined, label: '看看它们'),
+          Semantics(
+            button: true,
+            label: fishCount >= 5 ? '鱼缸已满' : '领养一条鱼',
+            child: InkWell(
+              key: const Key('adopt-fish'),
+              onTap: onAdopt,
+              borderRadius: BorderRadius.circular(32),
+              child: Container(
+                width: 58,
+                height: 58,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Tokens.tankGlowSoft,
+                ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Tokens.primaryBg,
+                  size: 32,
+                ),
               ),
-              child: const Text('选你的第一条鱼'),
             ),
           ),
+          const _NavItem(icon: Icons.auto_awesome_outlined, label: '布置鱼缸'),
         ],
       ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Tokens.textDim),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(color: Tokens.textDim, fontSize: 12),
+        ),
+      ],
     );
   }
 }

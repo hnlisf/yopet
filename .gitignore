@@ -47,3 +47,6 @@ android/local.properties
 android/app/release/
 android/key.properties
 # 故意 commit pubspec.lock(社区惯例,锁定依赖版本)
+
+# Local sibling-repository worktrees used for coordinated frontend/backend work
+.backend-yopet-supabase/
