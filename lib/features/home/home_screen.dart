@@ -8,7 +8,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase.dart';
 import '../../core/theme/tokens.dart';
+import '../../data/decorations.dart';
 import '../auth/auth_providers.dart';
+import '../decorations/decoration_layer.dart';
+import '../decorations/decoration_providers.dart';
+import '../decorations/decoration_sheet.dart';
+import '../decorations/tank_decoration.dart';
 import '../fish/fish_models.dart';
 import '../fish/fish_providers.dart';
 import '../fish/fish_sprite.dart';
@@ -41,18 +46,28 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _TankHome extends ConsumerWidget {
+class _TankHome extends ConsumerStatefulWidget {
   const _TankHome({required this.tankId});
 
   final String tankId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final fishAsync = ref.watch(tankFishProvider(tankId));
+  ConsumerState<_TankHome> createState() => _TankHomeState();
+}
+
+class _TankHomeState extends ConsumerState<_TankHome> {
+  @override
+  Widget build(BuildContext context) {
+    final fishAsync = ref.watch(tankFishProvider(widget.tankId));
     final catalogAsync = ref.watch(fishCatalogProvider);
+    final decorationsAsync = ref.watch(tankDecorationsProvider(widget.tankId));
     final fish = fishAsync.value ?? const <FishInstance>[];
+    final decorations = decorationsAsync.value ?? const <TankDecoration>[];
     final catalog = catalogAsync.value;
-    final loading = fishAsync.isLoading || catalogAsync.isLoading;
+    final loading =
+        fishAsync.isLoading ||
+        catalogAsync.isLoading ||
+        decorationsAsync.isLoading;
 
     return SafeArea(
       child: Column(
@@ -78,7 +93,13 @@ class _TankHome extends ConsumerWidget {
                             style: TextStyle(color: Tokens.text),
                           ),
                         )
-                      : _TankScene(fish: fish, catalog: catalog),
+                      : _TankScene(
+                          fish: fish,
+                          catalog: catalog,
+                          decorations: decorations,
+                          onMoveDecoration: _moveDecoration,
+                          onRemoveDecoration: _removeDecoration,
+                        ),
                 ),
               ),
             ),
@@ -94,6 +115,7 @@ class _TankHome extends ConsumerWidget {
                 context.go('/pick-fish');
               }
             },
+            onDecorate: _openDecorationSheet,
           ),
         ],
       ),
@@ -107,6 +129,52 @@ class _TankHome extends ConsumerWidget {
       // Router handles an already-ended session.
     }
     if (context.mounted) context.go('/sign-in');
+  }
+
+  Future<void> _openDecorationSheet() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DecorationSheet(tankId: widget.tankId),
+    );
+  }
+
+  Future<void> _moveDecoration((TankDecoration, Offset) change) async {
+    try {
+      await ref
+          .read(decorationRepositoryProvider)
+          .moveDecoration(decoration: change.$1, position: change.$2);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('暂时没能移动装饰，再试一次吧')));
+      }
+    }
+  }
+
+  Future<void> _removeDecoration(TankDecoration decoration) async {
+    try {
+      await ref
+          .read(decorationRepositoryProvider)
+          .removeDecoration(decoration.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${decorationForCode(decoration.code)?.nameZh ?? '装饰'}已移出鱼缸',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('暂时没能移除装饰，再试一次吧')));
+      }
+    }
   }
 }
 
@@ -162,17 +230,33 @@ class _HomeHeader extends StatelessWidget {
 }
 
 class _TankScene extends StatelessWidget {
-  const _TankScene({required this.fish, required this.catalog});
+  const _TankScene({
+    required this.fish,
+    required this.catalog,
+    required this.decorations,
+    required this.onMoveDecoration,
+    required this.onRemoveDecoration,
+  });
 
   final List<FishInstance> fish;
   final FishCatalog catalog;
+  final List<TankDecoration> decorations;
+  final ValueChanged<(TankDecoration, Offset)> onMoveDecoration;
+  final ValueChanged<TankDecoration> onRemoveDecoration;
 
   @override
   Widget build(BuildContext context) {
+    final activeBackground = decorations.where(
+      (decoration) => decoration.type == DecorationType.background,
+    );
+    final backgroundPath = activeBackground.isEmpty
+        ? 'assets/tank/background.png'
+        : decorationForCode(activeBackground.first.code)?.assetPath ??
+              'assets/tank/background.png';
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset('assets/tank/background.png', fit: BoxFit.cover),
+        Image.asset(backgroundPath, fit: BoxFit.cover),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -180,6 +264,13 @@ class _TankScene extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
+          ),
+        ),
+        Positioned.fill(
+          child: TankDecorationsLayer(
+            decorations: decorations,
+            onMove: onMoveDecoration,
+            onRemove: onRemoveDecoration,
           ),
         ),
         if (fish.isEmpty) const _EmptyTankMessage(),
@@ -356,10 +447,15 @@ class _EmptyTankMessage extends StatelessWidget {
 }
 
 class _TankNavigation extends StatelessWidget {
-  const _TankNavigation({required this.fishCount, required this.onAdopt});
+  const _TankNavigation({
+    required this.fishCount,
+    required this.onAdopt,
+    required this.onDecorate,
+  });
 
   final int fishCount;
   final VoidCallback onAdopt;
+  final VoidCallback onDecorate;
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +493,12 @@ class _TankNavigation extends StatelessWidget {
               ),
             ),
           ),
-          const _NavItem(icon: Icons.auto_awesome_outlined, label: '布置鱼缸'),
+          _NavItem(
+            key: const Key('decorate-tank'),
+            icon: Icons.auto_awesome_outlined,
+            label: '布置鱼缸',
+            onTap: onDecorate,
+          ),
         ],
       ),
     );
@@ -405,23 +506,42 @@ class _TankNavigation extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  const _NavItem({required this.icon, required this.label});
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    super.key,
+  });
 
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: Tokens.textDim),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          style: const TextStyle(color: Tokens.textDim, fontSize: 12),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
