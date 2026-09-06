@@ -16,6 +16,9 @@ abstract class FishRepository {
   /// Applies elapsed, non-punitive satiety decay when the tank opens.
   Future<void> syncTankSatiety(String tankId);
 
+  /// Advances time-led growth stages when the tank opens.
+  Future<void> syncTankGrowth(String tankId);
+
   /// Stores the last moment the player left the tank.
   ///
   /// This is current-state presence only. It deliberately does not create a
@@ -62,7 +65,8 @@ class SupabaseFishRepository implements FishRepository {
       _client
           .from('fish_species')
           .select(
-            'id, common_name_zh, common_name_en, '
+            'id, common_name_zh, common_name_en, growth_days_to_juvenile, '
+            'growth_days_to_adult, '
             'fish_variants(id, species_id, variant_label, color_hex, asset_filename)',
           )
           .order('common_name_zh'),
@@ -97,6 +101,11 @@ class SupabaseFishRepository implements FishRepository {
   @override
   Future<void> syncTankSatiety(String tankId) {
     return _client.rpc('sync_tank_satiety', params: {'target_tank_id': tankId});
+  }
+
+  @override
+  Future<void> syncTankGrowth(String tankId) {
+    return _client.rpc('sync_tank_growth', params: {'target_tank_id': tankId});
   }
 
   @override

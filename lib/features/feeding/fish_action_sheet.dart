@@ -87,6 +87,11 @@ class _FishActionSheetState extends ConsumerState<FishActionSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            Text(
+              '阶段：${_fish.growthStage.nameZh}',
+              style: const TextStyle(color: Tokens.textDim, fontSize: 14),
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
                 const Text(

@@ -9,6 +9,12 @@ enum GrowthStage {
     (stage) => stage.name == value,
     orElse: () => GrowthStage.fry,
   );
+
+  String get nameZh => switch (this) {
+    GrowthStage.fry => '鱼苗',
+    GrowthStage.juvenile => '幼鱼',
+    GrowthStage.adult => '成鱼',
+  };
 }
 
 class PersonalityTrait {
@@ -73,6 +79,8 @@ class FishSpecies {
     required this.nameZh,
     required this.nameEn,
     required this.variants,
+    this.growthDaysToJuvenile = 7,
+    this.growthDaysToAdult = 21,
   });
 
   factory FishSpecies.fromMap(Map<String, dynamic> map) {
@@ -85,6 +93,8 @@ class FishSpecies {
       nameZh: map['common_name_zh'] as String,
       nameEn: map['common_name_en'] as String,
       variants: variants,
+      growthDaysToJuvenile: map['growth_days_to_juvenile'] as int? ?? 7,
+      growthDaysToAdult: map['growth_days_to_adult'] as int? ?? 21,
     );
   }
 
@@ -92,8 +102,13 @@ class FishSpecies {
   final String nameZh;
   final String nameEn;
   final List<FishVariant> variants;
+  final int growthDaysToJuvenile;
+  final int growthDaysToAdult;
 
   String get assetPath => 'assets/fish/$id/base.png';
+
+  String assetPathForStage(GrowthStage stage) =>
+      'assets/fish/$id/${stage.name}.png';
 }
 
 class FishCatalog {

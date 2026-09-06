@@ -69,6 +69,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_syncTankSatiety());
+    unawaited(_syncTankGrowth());
   }
 
   @override
@@ -119,6 +120,14 @@ class _TankHomeState extends ConsumerState<_TankHome>
       await ref.read(fishRepositoryProvider).syncTankSatiety(widget.tankId);
     } catch (_) {
       // The realtime fish stream still renders the last known gentle state.
+    }
+  }
+
+  Future<void> _syncTankGrowth() async {
+    try {
+      await ref.read(fishRepositoryProvider).syncTankGrowth(widget.tankId);
+    } catch (_) {
+      // Existing realtime rows remain visible if the growth sync is offline.
     }
   }
 

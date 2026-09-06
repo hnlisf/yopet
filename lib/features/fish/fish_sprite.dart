@@ -18,17 +18,19 @@ class FishSprite extends StatelessWidget {
   final bool facingLeft;
   final double width;
 
+  static double scaleForStage(GrowthStage stage) => switch (stage) {
+    GrowthStage.fry => 0.44,
+    GrowthStage.juvenile => 0.66,
+    GrowthStage.adult => 0.99,
+  };
+
   @override
   Widget build(BuildContext context) {
-    final scale = switch (growthStage) {
-      GrowthStage.fry => 0.68,
-      GrowthStage.juvenile => 0.84,
-      GrowthStage.adult => 1.0,
-    };
+    final scale = scaleForStage(growthStage);
     final sprite = ColorFiltered(
       colorFilter: ColorFilter.mode(variant.color, BlendMode.color),
       child: Image.asset(
-        species.assetPath,
+        species.assetPathForStage(growthStage),
         width: width * scale,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.medium,
