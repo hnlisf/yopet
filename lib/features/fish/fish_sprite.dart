@@ -28,7 +28,10 @@ class FishSprite extends StatelessWidget {
   Widget build(BuildContext context) {
     final scale = scaleForStage(growthStage);
     final sprite = ColorFiltered(
-      colorFilter: ColorFilter.mode(variant.color, BlendMode.color),
+      // `BlendMode.color` paints an opaque rectangle in Flutter Web. Modulate
+      // keeps the PNG alpha channel intact while preserving watercolor light
+      // and shade inside the chosen variant tint.
+      colorFilter: ColorFilter.mode(variant.color, BlendMode.modulate),
       child: Image.asset(
         species.assetPathForStage(growthStage),
         width: width * scale,

@@ -1,10 +1,19 @@
 # yopet run-dev.ps1
-# Wrapper that reads ../supabase-local/docker/.env and starts flutter run
-# with correct SUPABASE_URL / SUPABASE_ANON_KEY dart-defines.
+# Wrapper that reads the local runtime's ../supabase-local/docker/.env and
+# starts flutter run with correct SUPABASE_URL / SUPABASE_ANON_KEY dart-defines.
+#
+# The sibling runtime is not a source of Yopet schema. Domain migrations, seed
+# data, and database tests are owned by .\supabase; see
+# docs/setup/database-workflow.md.
 #
 # Usage:
-#   .\run-dev.ps1                  # default: Windows desktop, URL from .env
-#   .\run-dev.ps1 -Platform android  # Android emulator: host translated to 10.0.2.2
+#   .\run-dev.ps1                    # default: Windows desktop, URL from .env
+#   .\run-dev.ps1 -Platform android   # Android emulator: host translated to 10.0.2.2
+#   .\run-dev.ps1 -Platform web       # local browser preview with the same auth config
+#   .\run-dev.ps1 -Platform ios       # iOS simulator/device on macOS
+#   .\run-dev.ps1 -Platform macos     # macOS desktop
+#   .\run-dev.ps1 -Platform linux     # Linux desktop
+#   .\run-dev.ps1 -Platform web -WebPort 4196
 #   .\run-dev.ps1 -Url http://example:54321  # override URL (debug)
 #
 # Prerequisites:
@@ -14,10 +23,13 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('windows', 'android')]
+    [ValidateSet('windows', 'android', 'ios', 'linux', 'macos', 'web')]
     [string]$Platform = 'windows',
 
-    [string]$Url = ''
+    [string]$Url = '',
+
+    [ValidateRange(1024, 65535)]
+    [int]$WebPort = 4196
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,12 +72,22 @@ if (-not $envPublishableKey) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Resolve URL: -Url override > SUPABASE_PUBLIC_URL > localhost:54321
+# 3. Resolve URL: -Url override > local gateway port > SUPABASE_PUBLIC_URL
 # ---------------------------------------------------------------------------
 if ($Url -ne '') {
     $supabaseUrl = $Url
 } elseif ($envSupabaseUrl) {
-    $supabaseUrl = $envSupabaseUrl
+    $parsedSupabaseUrl = [System.UriBuilder]::new($envSupabaseUrl)
+    # Docker Desktop may expose Kong on an offset host port while the copied
+    # SUPABASE_PUBLIC_URL still names the upstream default (54321). The local
+    # KONG_HTTP_PORT is the authoritative browser-facing port in that case.
+    if (
+        $envKongPort -and
+        ($parsedSupabaseUrl.Host -eq 'localhost' -or $parsedSupabaseUrl.Host -eq '127.0.0.1')
+    ) {
+        $parsedSupabaseUrl.Port = [int]$envKongPort
+    }
+    $supabaseUrl = $parsedSupabaseUrl.Uri.GetLeftPart([System.UriPartial]::Authority)
 } else {
     $port = if ($envKongPort) { $envKongPort } else { '54321' }
     $supabaseUrl = "http://localhost:${port}"
@@ -94,6 +116,10 @@ if ($Platform -eq 'android') {
 $flutterTarget = switch ($Platform) {
     'windows' { 'windows' }
     'android' { 'android' }
+    'ios'     { 'ios' }
+    'linux'   { 'linux' }
+    'macos'   { 'macos' }
+    'web'     { 'web-server' }
 }
 
 # ---------------------------------------------------------------------------
@@ -102,9 +128,18 @@ $flutterTarget = switch ($Platform) {
 Write-Host "yopet dev launcher" -ForegroundColor Cyan
 Write-Host "  Platform: $Platform  (flutter -d $flutterTarget)"
 Write-Host "  URL:      $supabaseUrl"
-Write-Host "  PublishableKey:  $($envPublishableKey.Substring(0, [Math]::Min(20, $envPublishableKey.Length)))..."
+Write-Host "  PublishableKey: configured"
 Write-Host ""
 
-flutter run -d $flutterTarget `
-    --dart-define=SUPABASE_URL="$supabaseUrl" `
-    --dart-define=SUPABASE_PUBLISHABLE_KEY="$envPublishableKey"
+$flutterArgs = @(
+    'run',
+    '-d', $flutterTarget,
+    "--dart-define=SUPABASE_URL=$supabaseUrl",
+    "--dart-define=SUPABASE_PUBLISHABLE_KEY=$envPublishableKey"
+)
+
+if ($Platform -eq 'web') {
+    $flutterArgs += "--web-port=$WebPort"
+}
+
+flutter @flutterArgs

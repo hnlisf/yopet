@@ -16,10 +16,19 @@ import '../decorations/decoration_sheet.dart';
 import '../decorations/tank_decoration.dart';
 import '../feeding/fish_action_sheet.dart';
 import '../feeding/satiety.dart';
+import '../feeding/tank_feeding.dart';
+import '../fish/custom_fish_sprite.dart';
 import '../fish/fish_models.dart';
 import '../fish/fish_providers.dart';
 import '../fish/fish_sprite.dart';
 import '../presence/presence_interaction.dart';
+import 'tank.dart';
+import '../temperature/temperature_sheet.dart';
+import '../temperature/water_temperature.dart';
+import '../weather/weather_atmosphere.dart';
+import '../weather/weather_models.dart';
+import '../weather/weather_sheet.dart';
+import 'fish_swim_profile.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -42,7 +51,7 @@ class HomeScreen extends ConsumerWidget {
               child: CircularProgressIndicator(color: Tokens.tankGlow),
             );
           }
-          return _TankHome(tankId: tank.id);
+          return _TankHome(tank: tank);
         },
       ),
     );
@@ -50,9 +59,9 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _TankHome extends ConsumerStatefulWidget {
-  const _TankHome({required this.tankId});
+  const _TankHome({required this.tank});
 
-  final String tankId;
+  final Tank tank;
 
   @override
   ConsumerState<_TankHome> createState() => _TankHomeState();
@@ -62,7 +71,10 @@ class _TankHomeState extends ConsumerState<_TankHome>
     with WidgetsBindingObserver {
   List<FishInstance> _visibleFish = const <FishInstance>[];
   DateTime? _recordedLastSeenAt;
+  WeatherSnapshot? _previewWeather;
+  int? _previewWaterTemperature;
   var _greetingToken = 0;
+  var _feedingToken = 0;
 
   @override
   void initState() {
@@ -117,7 +129,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
 
   Future<void> _syncTankSatiety() async {
     try {
-      await ref.read(fishRepositoryProvider).syncTankSatiety(widget.tankId);
+      await ref.read(fishRepositoryProvider).syncTankSatiety(widget.tank.id);
     } catch (_) {
       // The realtime fish stream still renders the last known gentle state.
     }
@@ -125,7 +137,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
 
   Future<void> _syncTankGrowth() async {
     try {
-      await ref.read(fishRepositoryProvider).syncTankGrowth(widget.tankId);
+      await ref.read(fishRepositoryProvider).syncTankGrowth(widget.tank.id);
     } catch (_) {
       // Existing realtime rows remain visible if the growth sync is offline.
     }
@@ -133,9 +145,9 @@ class _TankHomeState extends ConsumerState<_TankHome>
 
   @override
   Widget build(BuildContext context) {
-    final fishAsync = ref.watch(tankFishProvider(widget.tankId));
+    final fishAsync = ref.watch(tankFishProvider(widget.tank.id));
     final catalogAsync = ref.watch(fishCatalogProvider);
-    final decorationsAsync = ref.watch(tankDecorationsProvider(widget.tankId));
+    final decorationsAsync = ref.watch(tankDecorationsProvider(widget.tank.id));
     final fish = fishAsync.value ?? const <FishInstance>[];
     final decorations = decorationsAsync.value ?? const <TankDecoration>[];
     final catalog = catalogAsync.value;
@@ -144,11 +156,24 @@ class _TankHomeState extends ConsumerState<_TankHome>
         catalogAsync.isLoading ||
         decorationsAsync.isLoading;
     _visibleFish = fish;
+    final weather = _previewWeather ?? widget.tank.weather;
+    final waterTemperature =
+        _previewWaterTemperature ?? widget.tank.waterTemperature;
+    final residentSpecies = catalog == null
+        ? const <FishSpecies>[]
+        : _residentSpecies(fish, catalog);
 
     return SafeArea(
       child: Column(
         children: [
-          _HomeHeader(count: fish.length, onSignOut: () => _signOut(context)),
+          _HomeHeader(
+            count: fish.length,
+            weather: weather,
+            onWeatherTap: _openWeatherSheet,
+            waterTemperature: waterTemperature,
+            onTemperatureTap: () => _openTemperatureSheet(residentSpecies),
+            onSignOut: () => _signOut(context),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -174,9 +199,14 @@ class _TankHomeState extends ConsumerState<_TankHome>
                           catalog: catalog,
                           decorations: decorations,
                           onMoveDecoration: _moveDecoration,
+                          onResizeDecoration: _resizeDecoration,
                           onRemoveDecoration: _removeDecoration,
-                          onFishTapped: _openFishActions,
+                          onFishTapped: (selectedFish) =>
+                              _openFishActions(selectedFish, catalog),
                           greetingToken: _greetingToken,
+                          feedingToken: _feedingToken,
+                          weather: weather,
+                          waterTemperature: waterTemperature,
                         ),
                 ),
               ),
@@ -184,6 +214,7 @@ class _TankHomeState extends ConsumerState<_TankHome>
           ),
           _TankNavigation(
             fishCount: fish.length,
+            onFeed: () => _openTankFeeding(fish),
             onAdopt: () {
               if (fish.length >= 5) {
                 ScaffoldMessenger.of(
@@ -214,16 +245,102 @@ class _TankHomeState extends ConsumerState<_TankHome>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DecorationSheet(tankId: widget.tankId),
+      builder: (_) => DecorationSheet(tankId: widget.tank.id),
     );
   }
 
-  Future<void> _openFishActions(FishInstance fish) {
+  Future<void> _openFishActions(FishInstance fish, FishCatalog catalog) async {
+    final identity = _resolveCatalogIdentity(fish, catalog);
+    final traits = catalog.traits
+        .where((trait) => fish.traitIds.contains(trait.id))
+        .toList(growable: false);
+    final released = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FishActionSheet(
+        fish: fish,
+        traits: traits,
+        species: identity?.$1,
+        variant: identity?.$2,
+        onRelease: () => ref.read(fishRepositoryProvider).releaseFish(fish.id),
+      ),
+    );
+    if (released == true && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已经和${fish.name}好好说过再见了。')));
+    }
+  }
+
+  (FishSpecies, FishVariant)? _resolveCatalogIdentity(
+    FishInstance fish,
+    FishCatalog catalog,
+  ) {
+    if (fish.speciesId == null || fish.variantId == null) return null;
+    for (final species in catalog.species) {
+      if (species.id != fish.speciesId) continue;
+      for (final variant in species.variants) {
+        if (variant.id == fish.variantId) return (species, variant);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openTankFeeding(List<FishInstance> fish) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => FishActionSheet(fish: fish),
+      builder: (_) => TankFeedingSheet(
+        tankId: widget.tank.id,
+        fish: fish,
+        onFed: () {
+          if (mounted) setState(() => _feedingToken += 1);
+        },
+      ),
     );
+  }
+
+  Future<void> _openWeatherSheet() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => WeatherSheet(
+        tank: widget.tank,
+        onPreviewChanged: (weather) {
+          if (mounted) setState(() => _previewWeather = weather);
+        },
+      ),
+    );
+  }
+
+  Future<void> _openTemperatureSheet(List<FishSpecies> residentSpecies) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TemperatureSheet(
+        tank: widget.tank,
+        residentSpecies: residentSpecies,
+        onPreviewChanged: (temperature) {
+          if (mounted) setState(() => _previewWaterTemperature = temperature);
+        },
+      ),
+    );
+  }
+
+  List<FishSpecies> _residentSpecies(
+    List<FishInstance> fish,
+    FishCatalog catalog,
+  ) {
+    final byId = <String, FishSpecies>{
+      for (final species in catalog.species) species.id: species,
+    };
+    return fish
+        .map((item) => byId[item.speciesId])
+        .whereType<FishSpecies>()
+        .toList(growable: false);
   }
 
   Future<void> _moveDecoration((TankDecoration, Offset) change) async {
@@ -262,54 +379,213 @@ class _TankHomeState extends ConsumerState<_TankHome>
       }
     }
   }
+
+  Future<void> _resizeDecoration((TankDecoration, double) change) async {
+    try {
+      await ref
+          .read(decorationRepositoryProvider)
+          .resizeDecoration(decoration: change.$1, scaleFactor: change.$2);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('暂时没能调整装饰大小，再试一次吧')));
+      }
+    }
+  }
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.count, required this.onSignOut});
+  const _HomeHeader({
+    required this.count,
+    required this.weather,
+    required this.onWeatherTap,
+    required this.waterTemperature,
+    required this.onTemperatureTap,
+    required this.onSignOut,
+  });
 
   final int count;
+  final WeatherSnapshot? weather;
+  final VoidCallback onWeatherTap;
+  final int waterTemperature;
+  final VoidCallback onTemperatureTap;
   final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 10, 14, 4),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'yopet',
-              style: TextStyle(
-                color: Tokens.text,
-                fontFamily: 'serif',
-                fontSize: 38,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 380;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            compact ? 12 : 22,
+            10,
+            compact ? 4 : 14,
+            4,
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.4)),
-            ),
-            child: Text(
-              '$count / 5',
-              style: const TextStyle(
-                color: Tokens.text,
-                fontWeight: FontWeight.w700,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'yopet',
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.clip,
+                  style: TextStyle(
+                    color: Tokens.text,
+                    fontFamily: 'serif',
+                    fontSize: compact ? 30 : 36,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
-          ),
-          PopupMenuButton<String>(
-            iconColor: Tokens.textDim,
-            color: Tokens.surface,
-            onSelected: (_) => onSignOut(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'sign-out', child: Text('退出登录')),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 6 : 10,
+                  vertical: compact ? 7 : 8,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: Tokens.tankGlow.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(
+                  '$count / 5',
+                  style: TextStyle(
+                    color: Tokens.text,
+                    fontSize: compact ? 12 : 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              SizedBox(width: compact ? 4 : 8),
+              _WeatherStatusButton(
+                weather: weather,
+                onTap: onWeatherTap,
+                compact: compact,
+              ),
+              SizedBox(width: compact ? 3 : 6),
+              _TemperatureStatusButton(
+                temperature: waterTemperature,
+                onTap: onTemperatureTap,
+                compact: compact,
+              ),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints.tightFor(
+                  width: compact ? 34 : 40,
+                  height: 40,
+                ),
+                iconColor: Tokens.textDim,
+                color: Tokens.surface,
+                onSelected: (_) => onSignOut(),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'sign-out', child: Text('退出登录')),
+                ],
+              ),
             ],
           ),
-        ],
+        );
+      },
+    );
+  }
+}
+
+class _WeatherStatusButton extends StatelessWidget {
+  const _WeatherStatusButton({
+    required this.weather,
+    required this.onTap,
+    required this.compact,
+  });
+
+  final WeatherSnapshot? weather;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: weather == null
+          ? '设置天气氛围'
+          : '${weather!.cityName}${weather!.labelZh}，${weather!.temperatureLabel}，打开天气氛围设置',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: EdgeInsets.all(compact ? 6 : 9),
+          decoration: BoxDecoration(
+            color: Tokens.surface.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                weather?.condition.icon ?? Icons.wb_cloudy_outlined,
+                size: 17,
+                color: Tokens.tankGlowSoft,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TemperatureStatusButton extends StatelessWidget {
+  const _TemperatureStatusButton({
+    required this.temperature,
+    required this.onTap,
+    required this.compact,
+  });
+
+  final int temperature;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '水温$temperature度，打开水温设置',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 5 : 8,
+            vertical: compact ? 7 : 8,
+          ),
+          decoration: BoxDecoration(
+            color: Tokens.surface.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Tokens.amber.withValues(alpha: 0.42)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.thermostat_outlined,
+                size: compact ? 15 : 17,
+                color: Tokens.amber,
+              ),
+              const SizedBox(width: 2),
+              Text(
+                '$temperature°',
+                style: TextStyle(
+                  color: Tokens.text,
+                  fontSize: compact ? 12 : 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -321,18 +597,26 @@ class _TankScene extends StatefulWidget {
     required this.catalog,
     required this.decorations,
     required this.onMoveDecoration,
+    required this.onResizeDecoration,
     required this.onRemoveDecoration,
     required this.onFishTapped,
     required this.greetingToken,
+    required this.feedingToken,
+    required this.weather,
+    required this.waterTemperature,
   });
 
   final List<FishInstance> fish;
   final FishCatalog catalog;
   final List<TankDecoration> decorations;
   final ValueChanged<(TankDecoration, Offset)> onMoveDecoration;
+  final ValueChanged<(TankDecoration, double)> onResizeDecoration;
   final ValueChanged<TankDecoration> onRemoveDecoration;
   final ValueChanged<FishInstance> onFishTapped;
   final int greetingToken;
+  final int feedingToken;
+  final WeatherSnapshot? weather;
+  final int waterTemperature;
 
   @override
   State<_TankScene> createState() => _TankSceneState();
@@ -376,28 +660,39 @@ class _TankSceneState extends State<_TankScene> {
                 ),
               ),
             ),
+            WeatherAtmosphere(weather: widget.weather),
             Positioned.fill(
               child: TankDecorationsLayer(
                 decorations: widget.decorations,
                 onMove: widget.onMoveDecoration,
+                onResize: widget.onResizeDecoration,
                 onRemove: widget.onRemoveDecoration,
               ),
             ),
             if (widget.fish.isEmpty) const _EmptyTankMessage(),
-            for (final item in widget.fish)
-              if (_resolveSprite(widget.catalog, item) case final sprite?)
-                _SwimmingFish(
-                  key: ValueKey(item.id),
-                  fish: item,
-                  species: sprite.$1,
-                  variant: sprite.$2,
-                  traits: widget.catalog.traits
-                      .where((trait) => item.traitIds.contains(trait.id))
-                      .toList(growable: false),
-                  interaction: _interaction,
-                  greetingToken: widget.greetingToken,
-                  onPositionChanged: _recordFishPosition,
+            for (var index = 0; index < widget.fish.length; index += 1)
+              _SwimmingFish(
+                key: ValueKey(widget.fish[index].id),
+                fish: widget.fish[index],
+                swimSlot: index,
+                species: _resolveSprite(widget.catalog, widget.fish[index])?.$1,
+                variant: _resolveSprite(widget.catalog, widget.fish[index])?.$2,
+                traits: widget.catalog.traits
+                    .where(
+                      (trait) => widget.fish[index].traitIds.contains(trait.id),
+                    )
+                    .toList(growable: false),
+                interaction: _interaction,
+                greetingToken: widget.greetingToken,
+                weather: widget.weather,
+                waterTemperature: widget.waterTemperature,
+                onPositionChanged: _recordFishPosition,
+                onOpenProfile: () => _selectFish(
+                  widget.fish[index],
+                  _fishPositions[widget.fish[index].id] ?? Alignment.center,
                 ),
+              ),
+            TankFeedingAnimation(token: widget.feedingToken),
           ],
         ),
       ),
@@ -420,12 +715,16 @@ class _TankSceneState extends State<_TankScene> {
       }
     }
     if (fish == null) return;
+    _selectFish(fish, position);
+  }
+
+  void _selectFish(FishInstance fish, Alignment tapPosition) {
     setState(() {
       _interactionId += 1;
       _interaction = FishTapInteraction(
         id: _interactionId,
-        fishId: fishId,
-        position: position,
+        fishId: fish.id,
+        position: tapPosition,
       );
     });
     widget.onFishTapped(fish);
@@ -454,6 +753,7 @@ class _TankSceneState extends State<_TankScene> {
     FishCatalog catalog,
     FishInstance fish,
   ) {
+    if (fish.speciesId == null || fish.variantId == null) return null;
     for (final species in catalog.species) {
       if (species.id != fish.speciesId) continue;
       for (final variant in species.variants) {
@@ -469,20 +769,28 @@ class _SwimmingFish extends StatefulWidget {
     required this.fish,
     required this.species,
     required this.variant,
+    required this.swimSlot,
     required this.traits,
     required this.interaction,
     required this.greetingToken,
+    required this.weather,
+    required this.waterTemperature,
     required this.onPositionChanged,
+    required this.onOpenProfile,
     super.key,
   });
 
   final FishInstance fish;
-  final FishSpecies species;
-  final FishVariant variant;
+  final FishSpecies? species;
+  final FishVariant? variant;
+  final int swimSlot;
   final List<PersonalityTrait> traits;
   final FishTapInteraction? interaction;
   final int greetingToken;
+  final WeatherSnapshot? weather;
+  final int waterTemperature;
   final void Function(String fishId, Alignment position) onPositionChanged;
+  final VoidCallback onOpenProfile;
 
   @override
   State<_SwimmingFish> createState() => _SwimmingFishState();
@@ -491,6 +799,7 @@ class _SwimmingFish extends StatefulWidget {
 class _SwimmingFishState extends State<_SwimmingFish>
     with SingleTickerProviderStateMixin {
   late final Random _random;
+  late final FishSwimProfile _swimProfile;
   late Alignment _position;
   Timer? _timer;
   Timer? _reactionTimer;
@@ -501,7 +810,11 @@ class _SwimmingFishState extends State<_SwimmingFish>
   @override
   void initState() {
     super.initState();
-    _random = Random(_stableSeed(widget.fish.id));
+    _swimProfile = FishSwimProfile.forFish(
+      widget.fish.id,
+      swimSlot: widget.swimSlot,
+    );
+    _random = Random(_swimProfile.routeSeed);
     _position = _nextPosition(initial: true);
     _tailController = AnimationController(
       vsync: this,
@@ -513,7 +826,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _timer ??= Timer(const Duration(milliseconds: 600), _move);
+    _timer ??= Timer(_swimProfile.initialDelay, _move);
   }
 
   @override
@@ -552,7 +865,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
     final sad = isLowSatiety(widget.fish.satiety);
     final seconds = (sad ? 8 : (lazy ? 7 : 4)) + _random.nextInt(4);
-    _timer = Timer(Duration(seconds: seconds), _move);
+    _timer = Timer(_activityAdjustedDuration(seconds), _move);
   }
 
   void _reactToTap(Alignment tapPosition) {
@@ -609,7 +922,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
 
   Alignment _nextPosition({bool initial = false}) {
     if (isLowSatiety(widget.fish.satiety)) {
-      final seed = _stableSeed(widget.fish.id);
+      final seed = _swimProfile.routeSeed;
       final cornerX = seed.isEven ? -0.66 : 0.66;
       final cornerY = seed % 3 == 0 ? -0.54 : 0.5;
       return Alignment(
@@ -633,17 +946,38 @@ class _SwimmingFishState extends State<_SwimmingFish>
       minY = -0.42;
       maxY = 0.42;
     }
-    final x = -0.78 + _random.nextDouble() * 1.56;
-    final y = minY + _random.nextDouble() * (maxY - minY);
+    final x =
+        (_swimProfile.horizontalCenter +
+                (_random.nextDouble() - 0.5) * _swimProfile.horizontalSpan)
+            .clamp(-0.78, 0.78)
+            .toDouble();
+    final y =
+        (minY +
+                _random.nextDouble() * (maxY - minY) +
+                _swimProfile.verticalBias)
+            .clamp(minY, maxY)
+            .toDouble();
     return Alignment(initial ? x * 0.85 : x, y);
   }
 
-  static int _stableSeed(String value) {
-    var result = 17;
-    for (final unit in value.codeUnits) {
-      result = 37 * result + unit;
-    }
-    return result & 0x7fffffff;
+  Duration _activityAdjustedDuration(int seconds) {
+    final weatherMultiplier =
+        widget.weather?.condition.activityMultiplier ?? 1.0;
+    final temperatureMultiplier = comfortForWaterTemperature(
+      temperature: widget.waterTemperature,
+      preferredMin: widget.species?.preferredTemperatureMin ?? 22,
+      preferredMax: widget.species?.preferredTemperatureMax ?? 26,
+    ).activityMultiplier;
+    final multiplier =
+        (weatherMultiplier *
+                temperatureMultiplier *
+                _swimProfile.tempoMultiplier)
+            .clamp(0.65, 1.18);
+    final milliseconds = (seconds * 1000 / multiplier).round().clamp(
+      2200,
+      14000,
+    );
+    return Duration(milliseconds: milliseconds);
   }
 
   @override
@@ -652,50 +986,75 @@ class _SwimmingFishState extends State<_SwimmingFish>
     final lazy = widget.traits.any((trait) => trait.code == 'lazy');
     final sad = isLowSatiety(widget.fish.satiety);
     final duration = _activeReaction == null
-        ? Duration(seconds: sad ? 10 : (lazy ? 7 : (fast ? 3 : 5)))
+        ? _activityAdjustedDuration(sad ? 10 : (lazy ? 7 : (fast ? 3 : 5)))
         : _activeReaction == FishReaction.greeting
         ? const Duration(seconds: 2)
         : const Duration(milliseconds: 1500);
+    final appearance = widget.fish.customAppearance;
+    final activityLabel = sad
+        ? '${widget.fish.name}正在角落缓缓游动'
+        : widget.weather == null
+        ? '${widget.fish.name}正在鱼缸里游动'
+        : '${widget.weather!.labelZh}时，${widget.fish.name}正在鱼缸里游动';
+    final Widget sprite;
+    if (appearance != null) {
+      sprite = CustomFishSprite(
+        appearance: appearance,
+        growthStage: widget.fish.growthStage,
+        facingLeft: _facingLeft,
+        width: 108,
+      );
+    } else if (widget.species != null && widget.variant != null) {
+      sprite = FishSprite(
+        species: widget.species!,
+        variant: widget.variant!,
+        growthStage: widget.fish.growthStage,
+        facingLeft: _facingLeft,
+        width: 108,
+      );
+    } else {
+      sprite = const Icon(
+        Icons.set_meal_rounded,
+        color: Tokens.tankGlow,
+        size: 64,
+      );
+    }
     return AnimatedAlign(
       alignment: _position,
       duration: MediaQuery.disableAnimationsOf(context)
           ? Duration.zero
           : duration,
-      curve: Curves.easeInOutSine,
+      curve: _swimProfile.curve,
       child: Semantics(
-        label: sad
-            ? '${widget.fish.name}正在角落缓缓游动'
-            : '${widget.fish.name}正在鱼缸里游动',
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: _tailController,
-              child: FishSprite(
-                species: widget.species,
-                variant: widget.variant,
-                growthStage: widget.fish.growthStage,
-                facingLeft: _facingLeft,
-                width: 108,
+        button: true,
+        label: '$activityLabel，打开档案',
+        onTap: widget.onOpenProfile,
+        child: ExcludeSemantics(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _tailController,
+                child: sprite,
+                builder: (context, child) => Transform.rotate(
+                  alignment: const Alignment(0.62, 0),
+                  angle: sin(_tailController.value * pi * 2) * 0.045,
+                  child: child,
+                ),
               ),
-              builder: (context, child) => Transform.rotate(
-                alignment: const Alignment(0.62, 0),
-                angle: sin(_tailController.value * pi * 2) * 0.045,
-                child: child,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Tokens.primaryBg.withValues(alpha: 0.58),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  widget.fish.name,
+                  style: const TextStyle(color: Tokens.text, fontSize: 12),
+                ),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Tokens.primaryBg.withValues(alpha: 0.58),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                widget.fish.name,
-                style: const TextStyle(color: Tokens.text, fontSize: 12),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -720,11 +1079,13 @@ class _EmptyTankMessage extends StatelessWidget {
 class _TankNavigation extends StatelessWidget {
   const _TankNavigation({
     required this.fishCount,
+    required this.onFeed,
     required this.onAdopt,
     required this.onDecorate,
   });
 
   final int fishCount;
+  final VoidCallback onFeed;
   final VoidCallback onAdopt;
   final VoidCallback onDecorate;
 
@@ -741,7 +1102,12 @@ class _TankNavigation extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          const _NavItem(icon: Icons.water_drop_outlined, label: '看看它们'),
+          _NavItem(
+            key: const Key('feed-tank'),
+            icon: Icons.restaurant_rounded,
+            label: '一起喂食',
+            onTap: onFeed,
+          ),
           Semantics(
             button: true,
             label: fishCount >= 5 ? '鱼缸已满' : '领养一条鱼',
@@ -790,27 +1156,35 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: label,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
+      child: ExcludeSemantics(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: onTap == null ? Tokens.textDim : Tokens.tankGlowSoft,
-                fontSize: 12,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

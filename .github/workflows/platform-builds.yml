@@ -1,0 +1,62 @@
+name: Platform Builds
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-builds-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Android debug APK
+            os: ubuntu-latest
+            command: flutter build apk --debug
+          - label: Linux desktop
+            os: ubuntu-latest
+            command: flutter build linux
+          - label: Windows desktop
+            os: windows-latest
+            command: flutter build windows
+          - label: macOS desktop
+            os: macos-latest
+            command: flutter build macos
+          - label: iOS unsigned bundle
+            os: macos-latest
+            command: flutter build ios --no-codesign
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Linux desktop build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Build target
+        run: ${{ matrix.command }}

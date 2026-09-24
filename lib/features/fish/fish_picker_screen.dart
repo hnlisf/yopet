@@ -116,6 +116,8 @@ class _FishPickerScreenState extends ConsumerState<FishPickerScreen> {
                       );
                     },
                   ),
+                  const SizedBox(height: 18),
+                  _CustomFishEntry(onTap: () => context.go('/custom-fish')),
                   const SizedBox(height: 28),
                   const _SectionTitle(
                     index: '02',
@@ -492,6 +494,63 @@ class _VariantChip extends StatelessWidget {
       label: Text(
         variant.label,
         style: TextStyle(color: selected ? Tokens.text : Tokens.textDim),
+      ),
+    );
+  }
+}
+
+class _CustomFishEntry extends StatelessWidget {
+  const _CustomFishEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '组合式自定义鱼',
+      child: InkWell(
+        key: const Key('custom-fish-entry'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Tokens.tankGlow.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.35)),
+          ),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Tokens.tankGlowSoft,
+                foregroundColor: Tokens.primaryBg,
+                child: Icon(Icons.auto_awesome_rounded),
+              ),
+              SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '组合式自定义鱼',
+                      style: TextStyle(
+                        color: Tokens.text,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      '体型、尾鳍、纹样和水彩都由你决定',
+                      style: TextStyle(color: Tokens.textDim, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_rounded, color: Tokens.tankGlowSoft),
+            ],
+          ),
+        ),
       ),
     );
   }

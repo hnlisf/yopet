@@ -18,6 +18,11 @@ abstract class DecorationRepository {
     required Offset position,
   });
 
+  Future<void> resizeDecoration({
+    required TankDecoration decoration,
+    required double scaleFactor,
+  });
+
   Future<void> removeDecoration(String decorationId);
 }
 
@@ -94,6 +99,17 @@ class SupabaseDecorationRepository implements DecorationRepository {
           'position_x': position.dx.clamp(0.0, 1.0),
           'position_y': position.dy.clamp(0.0, 1.0),
         })
+        .eq('id', decoration.id);
+  }
+
+  @override
+  Future<void> resizeDecoration({
+    required TankDecoration decoration,
+    required double scaleFactor,
+  }) {
+    return _client
+        .from('tank_decorations')
+        .update({'scale_factor': clampDecorationScale(scaleFactor)})
         .eq('id', decoration.id);
   }
 

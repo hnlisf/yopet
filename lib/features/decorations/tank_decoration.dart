@@ -8,6 +8,7 @@ class TankDecoration {
     required this.type,
     required this.positionX,
     required this.positionY,
+    this.scaleFactor = 1,
     required this.placedAt,
   });
 
@@ -21,6 +22,7 @@ class TankDecoration {
       ),
       positionX: (map['position_x'] as num).toDouble(),
       positionY: (map['position_y'] as num).toDouble(),
+      scaleFactor: (map['scale_factor'] as num?)?.toDouble() ?? 1,
       placedAt: DateTime.parse(map['placed_at'] as String),
     );
   }
@@ -31,5 +33,6 @@ class TankDecoration {
   final DecorationType type;
   final double positionX;
   final double positionY;
+  final double scaleFactor;
   final DateTime placedAt;
 }

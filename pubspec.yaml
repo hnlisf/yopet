@@ -1,5 +1,5 @@
 name: yopet
-description: "A new Flutter project."
+description: "A calm cross-platform aquarium companion."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,6 +38,7 @@ dependencies:
   supabase_flutter: ^2.17.2
   go_router: ^17.5.0
   google_fonts: ^8.2.1
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
@@ -62,8 +63,28 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/decorations/
-    - assets/fish/
+    # Flutter asset directories are non-recursive. List each approved art
+    # collection so the nested watercolor fish and decorations are available
+    # on mobile, desktop, and the Web preview.
+    - assets/decorations/backgrounds/
+    - assets/decorations/driftwood/
+    - assets/decorations/plants/
+    - assets/decorations/stones/
+    - assets/fish/angel/
+    - assets/fish/barb/
+    - assets/fish/betta/
+    - assets/fish/cory/
+    - assets/fish/discus/
+    - assets/fish/goldfish/
+    - assets/fish/guppy/
+    - assets/fish/koi/
+    - assets/fish/molly/
+    - assets/fish/neon/
+    - assets/fish/swordtail/
+    - assets/fish/zebra/
+    - assets/custom_fish/
+    - assets/custom_fish/complete/
+    - assets/custom_fish/masks/
     - assets/tank/
 
   # To add assets to your application, add an assets section, like this:

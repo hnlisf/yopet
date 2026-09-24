@@ -1,5 +1,10 @@
 # yopet — 本地 Supabase 部署手册
 
+> **迁移来源说明：**本手册中的 sibling Docker 工作区只负责本机运行时和
+> 私密 .env 配置。Yopet 的领域迁移、种子数据和 SQL 测试统一维护在本仓库
+> 的 [supabase/](../../supabase/README.md)；日常变更流程见
+> [database-workflow.md](./database-workflow.md)。
+
 > **状态:** 手动模式(2026-08-07)
 > **作者:** 自动化 agent 会话交接 —— 那次撞上了 daemon hang
 > **关闭:** [#1](https://github.com/hnlisf/yopet/issues/1)

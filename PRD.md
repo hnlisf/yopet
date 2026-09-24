@@ -2,7 +2,7 @@
 
 > 状态: v0.1(经前两轮 `/grill-with-docs` 后的初稿)
 > 负责人: hnlisf
-> 最近更新: 2026-08-03
+> 最近更新: 2026-09-24
 
 ## 1. 产品概述
 
@@ -38,7 +38,7 @@
  6. 装饰            → 加石头、水草、沉木、背景(纯审美;不影响鱼)
  7. 回来            → 离开 > 10 分钟时,鱼会跟你打招呼(仅当前状态 — ADR-0005)
  8. 看它长大        → 鱼苗 → 幼鱼(约 7 天)→ 成鱼(约 21 天),喂食可加速
- 9. 真实天气        → 授权定位或选城市 → 真实天气影响鱼缸氛围
+ 9. 真实天气        → 搜索或选择城市 → 真实天气影响鱼缸氛围
 10. 调水温          → 手动滑块;鱼的活跃度按鱼种偏好匹配度上下浮动
 ```
 
@@ -46,18 +46,26 @@
 
 | # | 功能 | Tickets | 状态 |
 |---|---|---|---|
-| F1 | 本地开发环境(Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | [done](./docs/setup/local-supabase.md) |
-| F2 | Flutter 项目 + supabase_flutter | [#2](https://github.com/hnlisf/yopet/issues/2) | blocked by #2 |
-| F3 | 邮箱登录流程 | [#3](https://github.com/hnlisf/yopet/issues/3) | blocked by #3 |
-| F4 | 注册时自动建空鱼缸 | [#4](https://github.com/hnlisf/yopet/issues/4) | blocked by #3 |
-| F5 | 鱼领域数据 seed(鱼种 / 变体 / 性格) | [#5](https://github.com/hnlisf/yopet/issues/5) | blocked by #3 |
-| F6 | 领养一条鱼(随机 1–3 个性格特征) | [#6](https://github.com/hnlisf/yopet/issues/6) | blocked by #4, #5 |
-| F7 | 装饰系统(放置 / 移除,不影响功能) | [#7](https://github.com/hnlisf/yopet/issues/7) | blocked by #4 |
-| F8 | 在场互动 + 回来问候 | [#8](https://github.com/hnlisf/yopet/issues/8) | blocked by #6 |
-| F9 | 喂食(饱腹度缓慢衰减,无失败) | [#9](https://github.com/hnlisf/yopet/issues/9) | blocked by #6 |
-| F10 | 随时间成长(鱼苗 → 幼鱼 → 成鱼) | [#10](https://github.com/hnlisf/yopet/issues/10) | blocked by #6 |
-| F11 | 真实天气影响鱼缸氛围 | [#11](https://github.com/hnlisf/yopet/issues/11) | blocked by #4 |
-| F12 | 手动调水温 | [#12](https://github.com/hnlisf/yopet/issues/12) | blocked by #6 |
+| F1 | 本地开发环境(Docker Supabase) | [#1](https://github.com/hnlisf/yopet/issues/1) | 实现完成；领域迁移与数据库 CI 已纳入仓库 |
+| F2 | Flutter 项目 + supabase_flutter | [#2](https://github.com/hnlisf/yopet/issues/2) | 工程已齐备；Windows 本机构建完成，其余平台由 CI 构建矩阵验证 |
+| F3 | 邮箱登录流程 | [#3](https://github.com/hnlisf/yopet/issues/3) | 实现完成；真实 SMTP / HTTPS 回调待部署环境验收 |
+| F4 | 注册时自动建空鱼缸 | [#4](https://github.com/hnlisf/yopet/issues/4) | 实现与数据库验证完成 |
+| F5 | 鱼领域数据 seed(鱼种 / 变体 / 性格) | [#5](https://github.com/hnlisf/yopet/issues/5) | 实现与数据库验证完成 |
+| F6 | 领养一条鱼(随机 1–3 个性格特征) | [#6](https://github.com/hnlisf/yopet/issues/6) | 实现与自动化验证完成 |
+| F7 | 装饰系统(放置 / 移除,不影响功能) | [#7](https://github.com/hnlisf/yopet/issues/7) | 实现与自动化验证完成 |
+| F8 | 在场互动 + 回来问候 | [#8](https://github.com/hnlisf/yopet/issues/8) | 实现与自动化验证完成 |
+| F9 | 喂食(饱腹度缓慢衰减,无失败) | [#9](https://github.com/hnlisf/yopet/issues/9) | 实现与自动化验证完成 |
+| F10 | 随时间成长(鱼苗 → 幼鱼 → 成鱼) | [#10](https://github.com/hnlisf/yopet/issues/10) | 实现与自动化验证完成 |
+| F11 | 真实天气影响鱼缸氛围 | [#11](https://github.com/hnlisf/yopet/issues/11) | 实现与自动化验证完成 |
+| F12 | 手动调水温 | [#12](https://github.com/hnlisf/yopet/issues/12) | 实现与自动化验证完成 |
+| F13 | 账号进入与欢迎页 | — | 实现与自动化验证完成 |
+| F14 | 布景组合编辑 | — | 实现与自动化验证完成 |
+| F15 | 自然摆放与自由游动 | — | 实现与自动化验证完成 |
+| F16 | 可见贴底与鱼群节奏 | — | 实现与自动化验证完成 |
+| F17 | 整缸投喂与组合式自定义鱼 | — | 实现与数据库 CI 回归完成；待人工体验 |
+| F18 | 鱼档案与温柔送别 | — | 实现与数据库 CI 回归完成；待人工体验 |
+
+上述状态描述当前工作区的实现与验证程度，不替代 GitHub issue 的关闭状态或生产部署验收。
 
 ### 6.1 插入的阶段 — UI 原型(在 F2 与 F3 之间)
 
@@ -68,7 +76,7 @@
 | **范围** | 把 [docs/design/ui-design.md](docs/design/ui-design.md) 从 v0.1 的 ASCII 草图升级为可运行的 Flutter 屏——暗色画布、调色板 token、字体配对(Fraunces + Manrope)、鱼的 glow 签名。在真实的桌面 + 移动端验证"暗色 + 青色 glow"能否正确呈现,然后才让任何 feature 触碰 UI。 |
 | **范围内** | 实现 `theme/tokens.dart`、`theme/typography.dart`、`widgets/tank_canvas.dart` 骨架;把首页/鱼缸、登录、选鱼、鱼详情、装饰抽屉这五个屏做成低保真 shell;把 copy register 落到代码里,不只是文档里。 |
 | **范围外** | 接 Supabase、业务逻辑、成长/喂食/天气/水温逻辑(那些是 F3–F12)。不做任何新的视觉方向决策——每个视觉选择必须回溯到 `ui-design.md`。 |
-| **状态** | scheduled(待 F2 完成) |
+| **状态** | 已完成；选定的 B「水下工作台」已复用于正式自定义鱼编辑器。 |
 | **起源** | 2026-08-06 的 brainstorm:让 F3–F12 的 UI 返工更少,因为暗色 + glow 的方向在 feature 触碰之前已经在代码里验证过,而不仅在 ASCII 里。把它记在这里,让 F2/F3 的顺序显式而非隐式。 |
 
 ## 7. 非目标(刻意排除的范围)

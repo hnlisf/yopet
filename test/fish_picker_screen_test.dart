@@ -125,6 +125,9 @@ class _FakeFishRepository implements FishRepository {
   Future<FishInstance> feedFish(String fishId) async => _fish(fishId, '鱼');
 
   @override
+  Future<List<FishInstance>> feedTank(String tankId) async => const [];
+
+  @override
   Future<FishInstance> adoptFish({
     required String tankId,
     required FishSpecies species,
@@ -135,6 +138,20 @@ class _FakeFishRepository implements FishRepository {
     adoptedNames.add(name);
     return _fish('adopted-1', name);
   }
+
+  @override
+  Future<FishInstance> adoptCustomFish({
+    required String tankId,
+    required String name,
+    required CustomFishAppearance appearance,
+    required List<PersonalityTrait> availableTraits,
+  }) async {
+    adoptedNames.add(name);
+    return _fish('custom-adopted-1', name);
+  }
+
+  @override
+  Future<void> releaseFish(String fishId) async {}
 }
 
 FishInstance _fish(String id, String name) {

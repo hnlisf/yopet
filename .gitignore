@@ -50,3 +50,8 @@ android/key.properties
 
 # Local sibling-repository worktrees used for coordinated frontend/backend work
 .backend-yopet-supabase/
+
+# Supabase CLI local runtime metadata and per-machine configuration.
+supabase/.branches/
+supabase/.temp/
+supabase/.env

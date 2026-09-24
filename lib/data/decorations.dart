@@ -19,6 +19,7 @@ class DecorationDefinition {
     required this.assetPath,
     required this.defaultPosition,
     this.widthFactor = 0.28,
+    this.contentBottomInset = 0,
   });
 
   final String code;
@@ -27,7 +28,18 @@ class DecorationDefinition {
   final String assetPath;
   final Offset defaultPosition;
   final double widthFactor;
+
+  /// Fraction of the square render box below the visible watercolor shape.
+  /// This keeps the *artwork*, rather than its transparent PNG canvas, aligned
+  /// with the player's chosen vertical position.
+  final double contentBottomInset;
 }
+
+const minDecorationScale = 0.65;
+const maxDecorationScale = 1.55;
+
+double clampDecorationScale(double value) =>
+    value.clamp(minDecorationScale, maxDecorationScale);
 
 /// The approved watercolor decoration catalogue. It intentionally has no price,
 /// rarity, or unlock state: every item is a visual-only choice.
@@ -39,6 +51,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/plants/long.png',
     defaultPosition: Offset(0.16, 0.76),
     widthFactor: 0.26,
+    contentBottomInset: 0.04,
   ),
   DecorationDefinition(
     code: 'round_plant',
@@ -47,6 +60,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/plants/round.png',
     defaultPosition: Offset(0.79, 0.74),
     widthFactor: 0.25,
+    contentBottomInset: 0.11,
   ),
   DecorationDefinition(
     code: 'ribbon_plant',
@@ -55,6 +69,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/plants/ribbon.png',
     defaultPosition: Offset(0.67, 0.78),
     widthFactor: 0.24,
+    contentBottomInset: 0.18,
   ),
   DecorationDefinition(
     code: 'moss_rock',
@@ -63,6 +78,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/stones/moss.png',
     defaultPosition: Offset(0.27, 0.83),
     widthFactor: 0.28,
+    contentBottomInset: 0.14,
   ),
   DecorationDefinition(
     code: 'moon_sand',
@@ -71,6 +87,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/stones/sand.png',
     defaultPosition: Offset(0.51, 0.9),
     widthFactor: 0.44,
+    contentBottomInset: 0.35,
   ),
   DecorationDefinition(
     code: 'arch_rock',
@@ -79,6 +96,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/stones/arch.png',
     defaultPosition: Offset(0.74, 0.8),
     widthFactor: 0.31,
+    contentBottomInset: 0.23,
   ),
   DecorationDefinition(
     code: 'driftwood',
@@ -87,6 +105,7 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/driftwood/driftwood.png',
     defaultPosition: Offset(0.47, 0.78),
     widthFactor: 0.34,
+    contentBottomInset: 0.21,
   ),
   DecorationDefinition(
     code: 'branch_wood',
@@ -95,14 +114,16 @@ const decorationCatalog = <DecorationDefinition>[
     assetPath: 'assets/decorations/driftwood/branch.png',
     defaultPosition: Offset(0.29, 0.7),
     widthFactor: 0.31,
+    contentBottomInset: 0.20,
   ),
   DecorationDefinition(
     code: 'rootwood',
     nameZh: '根系小屋',
     type: DecorationType.driftwood,
-    assetPath: 'assets/decorations/driftwood/rootwood.png',
+    assetPath: 'assets/decorations/driftwood/rootwood-transparent.png',
     defaultPosition: Offset(0.74, 0.72),
     widthFactor: 0.31,
+    contentBottomInset: 0.23,
   ),
   DecorationDefinition(
     code: 'midnight',

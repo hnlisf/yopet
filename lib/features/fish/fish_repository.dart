@@ -31,6 +31,11 @@ abstract class FishRepository {
   /// Adds one standard meal and returns the server's capped fish state.
   Future<FishInstance> feedFish(String fishId);
 
+  /// Feeds every resident together in one owner-checked server transaction.
+  /// Each fish keeps an individual log row, but the player never has to
+  /// repeat the action one fish at a time.
+  Future<List<FishInstance>> feedTank(String tankId);
+
   Future<FishInstance> adoptFish({
     required String tankId,
     required FishSpecies species,
@@ -38,6 +43,19 @@ abstract class FishRepository {
     required String name,
     required List<PersonalityTrait> availableTraits,
   });
+
+  Future<FishInstance> adoptCustomFish({
+    required String tankId,
+    required String name,
+    required CustomFishAppearance appearance,
+    required List<PersonalityTrait> availableTraits,
+  });
+
+  /// Permanently removes one owned fish from its tank.
+  ///
+  /// The UI always places this behind an explicit, named confirmation. The
+  /// database owner policy remains the final authority for the delete.
+  Future<void> releaseFish(String fishId);
 }
 
 List<String> selectRandomTraitIds(
@@ -66,7 +84,7 @@ class SupabaseFishRepository implements FishRepository {
           .from('fish_species')
           .select(
             'id, common_name_zh, common_name_en, growth_days_to_juvenile, '
-            'growth_days_to_adult, '
+            'growth_days_to_adult, preferred_temp_min, preferred_temp_max, '
             'fish_variants(id, species_id, variant_label, color_hex, asset_filename)',
           )
           .order('common_name_zh'),
@@ -131,6 +149,18 @@ class SupabaseFishRepository implements FishRepository {
   }
 
   @override
+  Future<List<FishInstance>> feedTank(String tankId) async {
+    final rows = await _client.rpc(
+      'feed_tank',
+      params: {'target_tank_id': tankId},
+    );
+    return (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map(FishInstance.fromMap)
+        .toList(growable: false);
+  }
+
+  @override
   Future<FishInstance> adoptFish({
     required String tankId,
     required FishSpecies species,
@@ -158,5 +188,40 @@ class SupabaseFishRepository implements FishRepository {
       }
       rethrow;
     }
+  }
+
+  @override
+  Future<FishInstance> adoptCustomFish({
+    required String tankId,
+    required String name,
+    required CustomFishAppearance appearance,
+    required List<PersonalityTrait> availableTraits,
+  }) async {
+    final normalizedName = name.trim();
+    try {
+      final row = await _client
+          .from('fish')
+          .insert({
+            'tank_id': tankId,
+            'species_id': null,
+            'variant_id': null,
+            'name': normalizedName,
+            'traits': selectRandomTraitIds(availableTraits, _random),
+            ...appearance.toInsertMap(),
+          })
+          .select()
+          .single();
+      return FishInstance.fromMap(row);
+    } on PostgrestException catch (error) {
+      if (error.message.contains('tank_capacity_exceeded')) {
+        throw const TankFullException();
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> releaseFish(String fishId) async {
+    await _client.from('fish').delete().eq('id', fishId);
   }
 }

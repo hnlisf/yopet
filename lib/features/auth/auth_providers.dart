@@ -11,12 +11,25 @@ final authStateChangesProvider = StreamProvider<AuthState>((ref) {
   return getSupabase().auth.onAuthStateChange;
 });
 
+/// Resolves identity during the short interval between an SDK mutation and
+/// the corresponding auth-stream event. Kept generic so this timing boundary
+/// has a fast regression test without needing a live Auth client.
+T? resolveCurrentIdentity<T>({
+  required T? authEventIdentity,
+  required T? clientIdentity,
+}) {
+  return authEventIdentity ?? clientIdentity;
+}
+
 /// Convenience: just the current user (or `null` if signed out).
 /// Widgets that only care about identity (e.g. the home screen) read
 /// this instead of digging into the full [AuthState].
 final currentUserProvider = Provider<User?>((ref) {
   final authState = ref.watch(authStateChangesProvider).value;
-  return authState?.session?.user;
+  return resolveCurrentIdentity<User>(
+    authEventIdentity: authState?.session?.user,
+    clientIdentity: getSupabase().auth.currentUser,
+  );
 });
 
 /// Streams the signed-in user's [Tank] row (or `null` if no row yet).

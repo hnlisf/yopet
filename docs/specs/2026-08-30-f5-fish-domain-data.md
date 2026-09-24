@@ -1,6 +1,6 @@
 # F5 — Fish domain data seed (species / variants / personality traits)
 
-> Status: in-progress
+> Status: implementation and verification
 > Parent issue: [yopet#5](https://github.com/hnlisf/yopet/issues/5) (鱼种 / 变体 / 性格特征 domain data seed)
 > Depends on: F3 (issue #3 closed) — done (RLS helpers + auth.uid() are wired)
 > Implements: PRD §6.5 (fish_species / fish_variants / personality_traits tables)

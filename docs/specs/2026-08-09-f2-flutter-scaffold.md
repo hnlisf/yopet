@@ -1,6 +1,6 @@
 # F2 — Flutter 项目骨架 + supabase_flutter
 
-> 状态: ready-for-agent
+> 状态: implementation and verification
 > 关联: [Issue #2](https://github.com/hnlisf/yopet/issues/2)
 > 实现: [ADR-0004](../adr/0004-backend-supabase-self-hosted.md), [ADR-0002](../adr/0002-cloud-sync-with-account.md)
 

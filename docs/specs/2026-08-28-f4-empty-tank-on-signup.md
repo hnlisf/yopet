@@ -1,6 +1,6 @@
 # F4 — Auto-create empty tank on signup
 
-> Status: ready-for-agent
+> Status: implementation and verification
 > Parent issue: [yopet#4](https://github.com/hnlisf/yopet/issues/4) (注册时自动建一个空鱼缸)
 > Depends on: F3 (issue #3 closed) — done
 > Implements: PRD §5 step 2 ("空鱼缸 / 注册时 DB 自动建一条 tanks")
@@ -77,9 +77,11 @@ auth.users insert (postgres DB)
 F3 trigger: handle_new_user → public.profiles insert
 F4 trigger: handle_new_user_tank → public.tanks insert
   ↓
-signUp returns session (ENABLE_EMAIL_AUTOCONFIRM=true)
+email auto-confirmed? ─ yes → router redirect → /home
+  │
+  no
   ↓
-router redirect → /home
+show confirmation notice → confirm email → sign in → /home
   ↓
 HomeScreen builds:
   - ref.watch(currentUserProvider) → User

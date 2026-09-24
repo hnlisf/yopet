@@ -1,64 +1,47 @@
-# yopet lib/ 结构与迁移触发器
+# Yopet 应用结构与平台目标
 
-> 状态: 生效
-> 关联: [F2 spec §"项目结构"](../specs/2026-08-09-f2-flutter-scaffold.md)
-> 适用: F2 (单 feature) 起,直到迁移触发条件命中
+> 状态：生效
+> 关联：[ADR-0004](../adr/0004-backend-supabase-self-hosted.md)、
+> [数据库工作流](./database-workflow.md)
 
-## 当前结构(F2)
+Yopet 使用单一 Flutter 代码库和 Supabase 后端。领域模块按能力划分，跨模块
+服务放在 core/，不会把 UI、远程持久化和领域计算混在一个文件里。
 
-yopet 是 Flutter 单 codebase(ADR-0004),F2 阶段只有 1 个屏,`lib/` 平铺:
-
-```
+~~~
 yopet/
 ├── lib/
-│   ├── main.dart                # 入口: Supabase.initialize + runApp
-│   ├── app.dart                 # ProviderScope + MaterialApp.router
-│   ├── splash_screen.dart       # 唯一屏
-│   └── core/
-│       ├── env.dart             # SUPABASE_URL / SUPABASE_ANON_KEY
-│       ├── router.dart          # GoRouter 单 route /
-│       ├── supabase.dart        # 注释:Supabase.instance.client 用法
-│       └── theme/
-│           └── tokens.dart      # primaryBg + tankGlow 两个 const
-└── test/
-    └── widget_test.dart         # 1 个 smoke test
-```
+│   ├── app.dart / main.dart / splash_screen.dart
+│   ├── core/                    # 路由、环境、Supabase 与主题 token
+│   ├── data/                    # 静态装饰目录
+│   └── features/
+│       ├── auth/                # 邮箱身份与会话桥接
+│       ├── fish/                # 领养、自定义鱼、图层与持久化
+│       ├── home/                # 鱼缸、游动档案、首页原型
+│       ├── feeding/             # 单鱼/整缸投喂与饱腹度
+│       ├── decorations/         # 装饰目录、位置、缩放与图层
+│       ├── presence/            # 当前在场互动
+│       ├── weather/             # 城市天气与氛围
+│       └── temperature/         # 水温匹配与编辑器
+├── supabase/                    # 版本控制的迁移、种子与 pgTAP 测试
+├── test/                        # Dart/Widget 回归测试
+└── android/ ios/ linux/ macos/ web/ windows/
+                                # 由 Flutter 生成的平台壳
+~~~
 
-`features/` 目录**不存在**——YAGNI 决策,1 个 feature 占空目录是过度工程化(grill Q5)。
+## 依赖方向
 
-## 迁移触发条件
+1. UI 组件可以读取本 feature 的 provider、模型和 repository。
+2. repository 负责 Supabase 查询/写入；模型负责映射和领域值对象。
+3. core/ 不依赖任何 feature；feature 之间通过明确的模型或 provider 协作。
+4. 数据库行为只在 supabase/migrations/ 和 supabase/tests/ 中定义。
 
-出现以下任一情况时,从平铺升级为 `lib/features/<name>/`:
+## 平台承诺与验证
 
-1. **第 2 个 feature 屏出现**(典型:F3 sign-in 加 `lib/features/auth/`)
-2. **同一目录下文件数 > 8**(平铺的命名空间开始拥挤)
-3. **某个文件 > 300 行**(单文件职责过载)
+PRD 覆盖 Android、iOS、Windows、macOS、Linux；Web 是本地体验和设计验证入口。
+所有平台壳已存在，CI 在对应操作系统上分别构建 Android debug APK、Linux、
+Windows、macOS 和 unsigned iOS bundle。签名、商店上传和真实设备分发仍是
+发布阶段的单独工作，不会由 CI 使用开发密钥代替。
 
-**简言之**:加第 2 个 feature 时升级。
-
-## 迁移步骤(供参考)
-
-升级是 mechanical,顺序敏感:
-
-1. `mkdir -p lib/features/<feature-name>`
-2. 移动 feature 专属文件:`mv lib/<name>_screen.dart lib/features/<feature-name>/<name>_screen.dart`
-3. 调整 import 路径(相对路径变长)
-4. 若该 feature 有专属 provider/widgets:`mkdir lib/features/<feature-name>/{providers,widgets}/`
-5. 更新 `app.dart` 或 `router.dart` 的引用
-6. 删除平铺的旧文件
-7. 更新本文件:`当前结构`节改为新的 features/ 树
-8. 跑 `flutter analyze` 确认零警告
-9. 跑 `flutter test` 确认 smoke test 仍然通过
-
-## 不属于迁移触发器的场景
-
-- **新加 widget 但仍属同一 feature**:不迁移,加在 `lib/<existing_feature>/widgets/` 或 `lib/widgets/`
-- **新加 core 工具**(新的 env var、新的 router):加在 `lib/core/`,不动 features/
-- **新加主题 token**:加在 `lib/core/theme/tokens.dart`,不动 features/
-- **重构 SplashScreen**:只要还在 1 个 feature 内,不迁移
-
-## 与 F2 spec 的关系
-
-本文件是 F2 spec §"项目结构"的实施细化。F2 spec 给"平铺,features/ 不创建"的原则,本文件给"何时 + 怎么"退出平铺。两份文件**同时维护**,spec 不动,本文件随项目演化。
-
-参考: [F2 spec §"项目结构"](../specs/2026-08-09-f2-flutter-scaffold.md)、[ADR-0004 单 Flutter codebase + Supabase 自托管](../adr/0004-backend-supabase-self-hosted.md)。
+在具备对应工具链的机器上，使用 run-dev.ps1 的 Platform 参数启动 Windows、
+Android、iOS、Linux、macOS 或 Web。Android 模拟器仍会自动将 localhost
+改为 10.0.2.2；其他设备使用显式 Url 参数连接可达的 Supabase 地址。

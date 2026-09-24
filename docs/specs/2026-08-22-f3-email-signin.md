@@ -1,6 +1,6 @@
 # F3 — Email/password sign-in & sign-up
 
-> Status: ready-for-agent
+> Status: implementation and verification; production SMTP / HTTPS callback pending deployment acceptance
 > Parent issue: [yopet#3](https://github.com/hnlisf/yopet/issues/3) (邮箱密码登录流)
 > Depends on: F2 (Flutter project skeleton) — done
 > Implements: PRD §5 step 1 (Sign up) + step 5 (Come back, fish greets you)
@@ -9,13 +9,18 @@
 
 yopet 仓库已就位:F1 Supabase 栈 10 容器 healthy(`D:\docker\data\ext4.vhdx`,Kong 54331 workaround),F2 Flutter 项目骨架 `flutter run -d windows` 能弹 Fraunces splash。F3 进 email/password sign-in & sign-up 流。
 
-**F1 已知 gap**(影响 F3 devmode):上游 supabase-monorepo Aug 4 commit 把 Inbucket 从主 compose 删了(`docs/setup/local-supabase.md` §11.2),`SMTP_HOST=supabase-mail` 容器名解析不到。本 spec 适配策略:`ENABLE_EMAIL_AUTOCONFIRM=true`(已加在 `supabase-local/docker/.env`),GoTrue 跳过邮件发送直接 auto-confirm,sign-up 响应里带 session,F3 一屏流程 `signUp() → if session → 跳 /home`,无 verify link 步骤。
+**历史开发环境说明（已替换）**：F3 初版曾因本地邮件容器不可用，采用
+`ENABLE_EMAIL_AUTOCONFIRM=true` 的自动确认策略。该策略只说明当时的开发环境，
+不再是仓库默认行为。
 
-**Production mode**(`ENABLE_EMAIL_AUTOCONFIRM=false`)在 F3+ ticket 里另开一个,跟 Inbucket 替代品(maildev)一起,本 spec 不动。
+**当前行为**：应用同时支持自动确认和邮箱确认两种注册结果。需要确认时，注册后
+不会得到 session，界面会保留邮箱、提示确认并允许重新发送确认邮件；仓库的
+`supabase/config.toml` 已在干净 CLI 本地栈中启用确认邮件。生产 SMTP、HTTPS 回调
+地址和人工验收见 `docs/setup/production-auth.md`。
 
 ## User stories
 
-1. As a new player, I want to enter email + password and submit, so my account exists and I'm logged in (no email verification in dev).
+1. As a new player, I want to enter email + password and submit, so my account exists; when the environment requires it, I can confirm my email before entering my tank.
 2. As a returning player, I want to enter the same email + password, so I get back into my tank.
 3. As a signed-in player, I want to see my email on the home screen, so I know which account is active.
 4. As a signed-in player, I want to sign out, so I can switch accounts or hand off the device.
@@ -44,11 +49,11 @@ Flutter 端三屏 + 1 个 Postgres trigger:
                        ↓                             ↓
           supabase.auth.signInWithPassword   supabase.auth.signUp
                        ↓                             ↓
-                  session OK?                 session OK?  (auto-confirm, dev)
+                  session OK?                 session OK?  (auto-confirm)
                        ↓                             ↓
-                  redirect /home            redirect /home
+                  redirect /home       no session? show confirmation notice
                                                 ↓
-                                  DB trigger 同步 insert profiles
+                          confirmation link → sign in → /home
                        ↓                             ↓
                                   HomeScreen 显示 email
 ```
@@ -190,26 +195,26 @@ final currentUserProvider = Provider<User?>((ref) {
 |---|---|
 | profiles 表 (extends auth.users) 已建立,新用户 sign-up 时自动 insert 一行 | migration `20260822000000_f3_profiles.sql` + trigger |
 | Flutter 注册页:邮箱 + 密码输入,提交 | `AuthScreen(mode: signUp)` + `supabase.auth.signUp` |
-| 提交后 Supabase Auth 触发验证邮件,Inbucket 出现 | ⚠ **devmode skip**:`ENABLE_EMAIL_AUTOCONFIRM=true` 跳过邮件。spec commit 注释里写明 this item 需要后续 maildev ticket |
-| 点击邮件里的确认链接,邮箱状态变为 confirmed | ⚠ **devmode skip** 同上 |
+| 提交后 Supabase Auth 触发验证邮件,开发邮箱收件箱出现 | 干净 CLI 本地栈启用确认邮件；应用在无 session 时展示确认提示和重发入口。邮件收件箱与链接须按 `docs/setup/production-auth.md` 人工验收 |
+| 点击邮件里的确认链接,邮箱状态变为 confirmed | 应用支持确认后使用同一凭证登录；真实 HTTPS 回调及 SMTP 投递属于部署验收 |
 | Flutter 登录页用同一凭证登录成功 | `AuthScreen(mode: signIn)` + `supabase.auth.signInWithPassword` |
 | 登录后跳转首页,显示当前用户邮箱 | Router redirect → `HomeScreen` 显示 `currentUser.email` |
 | 错误路径覆盖:邮箱已存在、密码太弱、密码错误 | Error mapping 表 + AuthScreen 错误显示 |
 
 ## Out of scope
 
-- **生产模式 sign-up 流程**(需要 Inbucket / maildev 替代 + Supabase `ENABLE_EMAIL_AUTOCONFIRM=false`)—— 单独 ticket,F3 之后开
+- **生产 SMTP 凭据、发件域和 HTTPS 回调地址**—— 由部署环境提供，不写入仓库；见 `docs/setup/production-auth.md`
 - **OAuth / social login providers**(`GOTRUE_EXTERNAL_*` 配置)—— F4+ 邮箱登录稳定后再开
 - **Email 重置密码 / change email**—— PRD §5 没要求
 - **profile 编辑 UI**—— F3 只读 email,F4+ 加 display_name / avatar 时一起
 - **RLS 在 storage / realtime 的策略**—— 那些是 F4 鱼缸 / F6 鱼种的 scope
-- **测试 F3 的真实邮件确认** —— devmode skip,生产环境(ENABLE_EMAIL_AUTOCONFIRM=false)才需要 Inbucket/maildev
+- **真实邮件服务端到端验收** —— 需要受控邮箱、SMTP 凭据和可访问的 HTTPS 站点；按 `docs/setup/production-auth.md` 执行
 
 ## Further notes
 
-- **F3 spec commit 注释里**写明上述 7 条 acceptance 中 2 条是 devmode skip,需要在 F3 close comment 里给项目维护者留 follow-up ticket
+- **旧 F3 记录中的 devmode skip** 已被当前确认邮件流程替代；历史记录保留仅用于解释早期本地环境限制
 - **STRUCURE.md 触发**—— F3 引入 `lib/features/`,符合升级条件,本 spec 直接落地结构(而不是等 F4);F4–F12 在新结构上添加 feature
-- **dev-mode sign-up 行为**:`ENABLE_EMAIL_AUTOCONFIRM=true` 下 `supabase.auth.signUp` 立即返回 session,Flutter 端直接 `navigator.go('/home')`,**不需要** verify link
+- **sign-up 行为**：自动确认环境中 `supabase.auth.signUp` 返回 session，Flutter 端进入 `/home`；确认邮件环境中没有 session，Flutter 保留邮箱、展示确认提示并支持重发，确认后再登录
 - **real password 长度**:Supabase 默认 ≥ 6 字符,跟 spec 一致;不引入额外客户端校验(让 server 决定,避免 dev/prod 漂移)
 - **ANON_KEY / SUPABASE_PUBLISHABLE_KEY**:沿用 F2 / F1 的 key,fresh run 仍走 `run-dev.ps1` 注入
 - **profile.id mirror auth.users.id**,F6+ 加"我有多少鱼"统计时 profile join 即可
