@@ -134,7 +134,28 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       final object = find.byKey(const Key('placed-decoration-remove-test'));
       expect(object, findsOneWidget);
-      await tester.tap(object);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pump();
+      final box = tester.renderObject<RenderBox>(object);
+      final rect = tester.getRect(object);
+      Offset? visiblePoint;
+      for (var y = 1; y < 10 && visiblePoint == null; y++) {
+        for (var x = 1; x < 10; x++) {
+          final point =
+              rect.topLeft + Offset(rect.width * x / 10, rect.height * y / 10);
+          if (tester
+              .hitTestOnBinding(point)
+              .path
+              .any((entry) => entry.target == box)) {
+            visiblePoint = point;
+            break;
+          }
+        }
+      }
+      expect(visiblePoint, isNotNull);
+      await tester.tapAt(visiblePoint!);
       await tester.pump();
       await tester.tap(find.byKey(const Key('decoration-remove-remove-test')));
       await tester.pump();
@@ -212,12 +233,12 @@ void main() {
     final beforeMeal = tester.getCenter(find.byType(FishTurn));
     await tester.tap(find.byKey(const Key('feed-tank-confirm')));
     await tester.pump();
-    for (var frame = 0; frame < 100; frame++) {
+    for (var frame = 0; frame < 30; frame++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(
-      tester.getCenter(find.byType(FishTurn)).dx,
-      lessThan(beforeMeal.dx - 20),
+      (tester.getCenter(find.byType(FishTurn)) - beforeMeal).distance,
+      greaterThan(40),
     );
 
     final fishProfileControl = find.bySemanticsLabel('泡泡正在鱼缸里游动，打开档案');

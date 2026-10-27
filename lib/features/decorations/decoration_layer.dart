@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/decorations.dart';
 import 'decoration_layout.dart';
 import 'tank_decoration.dart';
+import 'decoration_hit_region.dart';
 
 class TankDecorationsLayer extends StatefulWidget {
   const TankDecorationsLayer({
@@ -130,9 +131,12 @@ class _TankDecorationsLayerState extends State<TankDecorationsLayer> {
           ? TapRegion(
               groupId: _selectionTapGroup,
               onTapOutside: (_) => setState(() => _selectedId = null),
-              child: child,
+              child: DecorationHitRegion(
+                asset: definition.assetPath,
+                child: child,
+              ),
             )
-          : child,
+          : DecorationHitRegion(asset: definition.assetPath, child: child),
     );
   }
 

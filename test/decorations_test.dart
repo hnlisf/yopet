@@ -9,6 +9,29 @@ import 'package:yopet/features/decorations/decoration_repository.dart';
 import 'package:yopet/features/decorations/decoration_sheet.dart';
 import 'package:yopet/features/decorations/tank_decoration.dart';
 
+Future<Offset> _visiblePoint(WidgetTester tester, Finder object) async {
+  // Image decoding completes on the engine rather than the fake test clock.
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 200)),
+  );
+  await tester.pump();
+  final box = tester.renderObject<RenderBox>(object);
+  final rect = tester.getRect(object);
+  for (var y = 1; y < 10; y++) {
+    for (var x = 1; x < 10; x++) {
+      final point =
+          rect.topLeft + Offset(rect.width * x / 10, rect.height * y / 10);
+      if (tester
+          .hitTestOnBinding(point)
+          .path
+          .any((entry) => entry.target == box)) {
+        return point;
+      }
+    }
+  }
+  throw StateError('No visible decoration pixels received a hit');
+}
+
 void main() {
   test('approved decoration catalogue has three choices in every category', () {
     expect(decorationCatalog, hasLength(12));
@@ -128,6 +151,13 @@ void main() {
       await tester.pumpAndSettle();
 
       final object = find.byKey(const Key('placed-decoration-decor-1'));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pump();
+      await tester.tapAt(tester.getTopLeft(object) + const Offset(1, 1));
+      await tester.pump();
+      expect(find.byKey(const Key('decoration-remove-decor-1')), findsNothing);
       await tester.drag(object, const Offset(54, -24));
       await tester.pump();
       expect(moved, hasLength(1));
@@ -177,8 +207,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.drag(
-      find.byKey(const Key('placed-decoration-decor-floor')),
+    await tester.dragFrom(
+      await _visiblePoint(
+        tester,
+        find.byKey(const Key('placed-decoration-decor-floor')),
+      ),
       const Offset(0, 500),
     );
     await tester.pump();
@@ -219,7 +252,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('placed-decoration-decor-resize')));
+    await tester.tapAt(
+      await _visiblePoint(
+        tester,
+        find.byKey(const Key('placed-decoration-decor-resize')),
+      ),
+    );
     await tester.pump();
     await tester.tap(find.byKey(const Key('decoration-scale-up-decor-resize')));
     await tester.pump();
@@ -258,14 +296,14 @@ void main() {
     await tester.pumpAndSettle();
 
     final object = find.byKey(const Key('placed-decoration-decor-confirm'));
-    await tester.tap(object);
+    await tester.tapAt(await _visiblePoint(tester, object));
     await tester.pump();
     expect(
       find.byKey(const Key('decoration-confirm-decor-confirm')),
       findsOneWidget,
     );
 
-    await tester.tap(object);
+    await tester.tapAt(await _visiblePoint(tester, object));
     await tester.pump();
     expect(
       find.byKey(const Key('decoration-confirm-decor-confirm')),
@@ -303,8 +341,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('placed-decoration-decor-outside-confirm')),
+    await tester.tapAt(
+      await _visiblePoint(
+        tester,
+        find.byKey(const Key('placed-decoration-decor-outside-confirm')),
+      ),
     );
     await tester.pump();
     expect(

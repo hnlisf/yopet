@@ -90,8 +90,27 @@ class CompanionBehavior {
         : 250,
   );
 
-  Duration feedingDelay(int slot) =>
-      attentionDelay + Duration(milliseconds: slot * 240);
+  Duration feedingDelay(int slot) => Duration(
+    milliseconds:
+        (enthusiastic || (profile == null && codes.contains('bold'))
+            ? 80
+            : cautious || (profile == null && shy)
+            ? 420
+            : gentle || (profile == null && !lazy)
+            ? 220
+            : 650) +
+        slot * 85,
+  );
+
+  /// Food temporarily overrides idle lethargy; personalities still arrive at
+  /// different speeds. Pixel speed is independent of weather/temperature.
+  double get feedingSpeed => enthusiastic
+      ? 150
+      : cautious
+      ? 125
+      : gentle
+      ? 115
+      : 100;
 
   Duration greetingDelay(int slot) =>
       attentionDelay + Duration(milliseconds: slot * 420);
@@ -111,7 +130,10 @@ class CompanionBehavior {
 
   Alignment feedingDestination(int slot) {
     // Separate portions across the middle water column, not one shared point.
-    return Alignment(-.56 + (slot % 5) * .28, shy ? .12 : -.12);
+    return Alignment(
+      -.56 + (slot % 5) * .28,
+      (slot.isEven ? -.40 : -.24) + (shy ? .08 : 0),
+    );
   }
 
   Duration get dwell => Duration(

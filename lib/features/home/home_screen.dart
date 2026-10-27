@@ -1108,6 +1108,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
   bool _dwelling = false;
   bool _following = false;
   bool _company = false;
+  bool _feeding = false;
   CompanyApproach? _companyApproach;
   Alignment? _approachFinal;
   IdleRoutine? _idleRoutine;
@@ -1211,6 +1212,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
   }
 
   void _respondToFeeding() {
+    _feeding = false;
     _following = false;
     _timer?.cancel();
     _reactionTimer?.cancel();
@@ -1226,11 +1228,13 @@ class _SwimmingFishState extends State<_SwimmingFish>
         destination: _behavior.feedingDestination(widget.swimSlot),
         duration: const Duration(seconds: 14),
       );
+      _feeding = true;
     });
   }
 
   void _move() {
     if (!mounted) return;
+    _feeding = false;
     _company = false;
     _companyApproach = null;
     _approachFinal = null;
@@ -1388,6 +1392,7 @@ class _SwimmingFishState extends State<_SwimmingFish>
     required Alignment destination,
     required Duration duration,
   }) {
+    _feeding = false;
     _following = false;
     _attentionTimer?.cancel();
     _company = false;
@@ -1487,7 +1492,9 @@ class _SwimmingFishState extends State<_SwimmingFish>
               ) ??
               1.0)
         : 1.0;
-    final speed = _company
+    final speed = _feeding
+        ? _behavior.feedingSpeed
+        : _company
         ? (_companyApproach?.speed ?? 45)
         : (_activeReaction != null ? 42 : 30) *
               traitSpeed *
@@ -1509,8 +1516,12 @@ class _SwimmingFishState extends State<_SwimmingFish>
       target: holding ? _motion.position : _toPixels(_target),
       tank: widget.tankSize,
       speed: holding ? 3 : speed,
-      personalSpace: space,
-      steering: _activeReaction == null ? _behavior.steering : .9,
+      personalSpace: _feeding ? space * .65 : space,
+      steering: _feeding
+          ? 1.4
+          : _activeReaction == null
+          ? _behavior.steering
+          : .9,
       neighbours: widget.neighbours.entries
           .where((entry) => entry.key != widget.fish.id)
           .map((entry) => _toPixels(entry.value))

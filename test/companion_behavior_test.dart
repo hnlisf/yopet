@@ -33,6 +33,18 @@ void main() {
       greaterThan(bold.feedingDestination(0).y),
     );
   });
+  test('all four personalities sprint for food above their idle speed', () {
+    for (final traits in [
+      ['bold', 'curious'],
+      ['bold', 'lazy'],
+      ['shy', 'curious'],
+      ['shy', 'lazy'],
+    ]) {
+      final behavior = CompanionBehavior(traits);
+      expect(behavior.feedingSpeed, greaterThan(30 * behavior.speed * 2));
+      expect(behavior.feedingDelay(0).inMilliseconds, lessThan(800));
+    }
+  });
   test(
     'social mixed personalities can follow while non-social fish do not',
     () {
