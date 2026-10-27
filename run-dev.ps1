@@ -29,10 +29,21 @@ param(
     [string]$Url = '',
 
     [ValidateRange(1024, 65535)]
-    [int]$WebPort = 4196
+    [int]$WebPort = 4196,
+
+    # Build a Windows release against the same local backend, without launching.
+    [switch]$BuildOnly,
+
+    [string]$FlutterPath = 'flutter',
+
+    # Use already resolved dependencies for repeatable local build/test runs.
+    [switch]$NoPub
 )
 
 $ErrorActionPreference = 'Stop'
+if ($BuildOnly -and $Platform -ne 'windows') {
+    throw '-BuildOnly currently supports -Platform windows only.'
+}
 
 # ---------------------------------------------------------------------------
 # 1. Resolve the .env path (relative to this script's location)
@@ -138,8 +149,28 @@ $flutterArgs = @(
     "--dart-define=SUPABASE_PUBLISHABLE_KEY=$envPublishableKey"
 )
 
+if ($BuildOnly) {
+    $flutterArgs = @(
+        'build', 'windows', '--release',
+        "--dart-define=SUPABASE_URL=$supabaseUrl",
+        "--dart-define=SUPABASE_PUBLISHABLE_KEY=$envPublishableKey"
+    )
+}
+
 if ($Platform -eq 'web') {
     $flutterArgs += "--web-port=$WebPort"
 }
 
-flutter @flutterArgs
+if ($NoPub) {
+    $flutterArgs += '--no-pub'
+}
+
+Push-Location $scriptDir
+try {
+    & $FlutterPath @flutterArgs
+} finally {
+    Pop-Location
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "Flutter command failed with exit code $LASTEXITCODE."
+}

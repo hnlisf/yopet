@@ -10,6 +10,75 @@ import 'package:yopet/features/fish/fish_repository.dart';
 import 'package:yopet/features/home/tank.dart';
 
 void main() {
+  testWidgets('adapts the canvas workspace without losing the fish choices', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pumpEditor(tester, _CustomFishRepository());
+    expect(find.byKey(const Key('studio-desktop-layout')), findsOneWidget);
+    expect(find.byKey(const Key('studio-mobile-layout')), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const Key('studio-preview'))).width,
+      greaterThan(600),
+    );
+    await tester.tap(find.byKey(const ValueKey('studio-tool-体型')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('studio-choice-箱形')));
+    await tester.pump();
+
+    for (final size in [
+      const Size(390, 844),
+      const Size(768, 1024),
+      const Size(1024, 620),
+      const Size(1024, 480),
+      const Size(844, 390),
+    ]) {
+      tester.view.physicalSize = size;
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('studio-desktop-layout')),
+        size.width >= 960 ? findsOneWidget : findsNothing,
+      );
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const ValueKey('studio-choice-箱形')))
+            .selected,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull, reason: '$size must not overflow');
+    }
+  });
+
+  testWidgets('desktop pattern grid, tuning and save remain functional', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _CustomFishRepository();
+    await _pumpEditor(tester, repository);
+    final wave = find.byKey(const ValueKey('studio-pattern-wave'));
+    await tester.ensureVisible(wave);
+    await tester.tap(wave);
+    await tester.pump();
+    final density = find.byType(Slider).first;
+    await tester.ensureVisible(density);
+    await tester.drag(density, const Offset(30, 0));
+    await tester.pump();
+    expect(tester.widget<Slider>(density).value, greaterThan(.58));
+    await tester.tap(find.byKey(const ValueKey('studio-tool-名字')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('custom-fish-name')), '桌面波波');
+    await tester.tap(find.byKey(const Key('save-custom-fish')));
+    await tester.pumpAndSettle();
+    expect(repository.savedAppearance?.pattern, 'wave');
+    expect(repository.savedName, '桌面波波');
+  });
+
   testWidgets('offers an eight-by-eight-by-twelve custom fish and saves it', (
     tester,
   ) async {
@@ -146,6 +215,11 @@ final _tank = Tank(
 );
 
 class _CustomFishRepository implements FishRepository {
+  @override
+  Future<void> updatePersonality(
+    String fishId,
+    List<PersonalityTrait> traits,
+  ) async {}
   _CustomFishRepository({this.fishCount = 0});
 
   final int fishCount;

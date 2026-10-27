@@ -5,6 +5,62 @@ import 'package:yopet/features/fish/fish_models.dart';
 import 'package:yopet/features/fish/fish_repository.dart';
 
 void main() {
+  test('writes canonical named identity and its compatibility pair', () {
+    List<PersonalityTrait> traits(List<String> codes) => codes
+        .map(
+          (code) => PersonalityTrait(
+            id: 'id-$code',
+            code: code,
+            nameZh: code,
+            behaviorHint: const {},
+          ),
+        )
+        .toList();
+    for (final pair in <String, List<String>>{
+      'enthusiastic': ['bold', 'curious'],
+      'gentle': ['bold', 'lazy'],
+      'cautious': ['shy', 'curious'],
+      'quiet': ['shy', 'lazy'],
+    }.entries) {
+      final payload = namedPersonalityPayload(traits(pair.value));
+      expect(payload['personality_code'], pair.key);
+      expect(payload['traits'], pair.value.map((code) => 'id-$code').toList());
+    }
+    expect(
+      () => namedPersonalityPayload(traits(['bold'])),
+      throwsArgumentError,
+    );
+    expect(
+      () => namedPersonalityPayload(traits(['bold', 'shy'])),
+      throwsArgumentError,
+    );
+    expect(
+      () => namedPersonalityPayload(traits(['bold', 'curious', 'lazy'])),
+      throwsArgumentError,
+    );
+  });
+  test('adoption never pairs bold and shy across random seeds', () {
+    final traits = ['bold', 'shy', 'curious', 'lazy']
+        .map(
+          (code) => PersonalityTrait(
+            id: code,
+            code: code,
+            nameZh: code,
+            behaviorHint: const {},
+          ),
+        )
+        .toList();
+    for (var seed = 0; seed < 300; seed++) {
+      final ids = selectRandomTraitIds(traits, Random(seed));
+      expect(ids.contains('bold') && ids.contains('shy'), isFalse);
+      expect(
+        isValidPersonality(traits.where((t) => ids.contains(t.id)).toList()),
+        isTrue,
+      );
+    }
+    expect(isValidPersonality(traits.take(2).toList()), isFalse);
+    expect(isValidPersonality([]), isFalse);
+  });
   group('selectRandomTraitIds', () {
     final traits = List.generate(
       4,

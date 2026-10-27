@@ -371,6 +371,7 @@ class CustomFishStudio extends StatelessWidget {
     this.showIndividualVariation = true,
     this.nameError,
     this.onNameChanged,
+    this.adaptiveLayout = false,
   });
 
   final CustomFishAppearance appearance;
@@ -400,10 +401,360 @@ class CustomFishStudio extends StatelessWidget {
   final bool showIndividualVariation;
   final String? nameError;
   final ValueChanged<String>? onNameChanged;
+  final bool adaptiveLayout;
+
+  Widget _adaptiveStudio(BuildContext context) {
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Window width, not platform identity, controls the layout: a narrow
+          // Windows window must be just as usable as a phone.
+          final wide = constraints.maxWidth >= 960;
+          final inset = wide ? 24.0 : 12.0;
+          final minHeight = wide ? 660.0 : 620.0;
+          final workspace = SizedBox(
+            height: constraints.maxHeight < minHeight
+                ? minHeight
+                : constraints.maxHeight,
+            child: Container(
+              decoration: wide
+                  ? const BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage('assets/tank/studio_canvas.png'),
+                        fit: BoxFit.cover,
+                        opacity: .85,
+                      ),
+                    )
+                  : null,
+              padding: EdgeInsets.all(inset),
+              child: Column(
+                children: [
+                  _PrototypeHeader(
+                    title: '水下工作台',
+                    subtitle: '鱼一直留在画布中央',
+                    transparent: true,
+                    onBack: onBack,
+                    progressLabel: progressLabel,
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: wide
+                        ? Row(
+                            key: const Key('studio-desktop-layout'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(width: 76, child: _desktopRail()),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _adaptivePreview(immersive: true),
+                              ),
+                              const SizedBox(width: 20),
+                              SizedBox(
+                                width: (constraints.maxWidth * .27).clamp(
+                                  310.0,
+                                  380.0,
+                                ),
+                                child: _adaptiveTools(desktop: true),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            key: const Key('studio-mobile-layout'),
+                            children: [
+                              SizedBox(
+                                height: (constraints.maxHeight * .33).clamp(
+                                  180.0,
+                                  300.0,
+                                ),
+                                width: double.infinity,
+                                child: _adaptivePreview(),
+                              ),
+                              const SizedBox(height: 12),
+                              Expanded(child: _adaptiveTools()),
+                            ],
+                          ),
+                  ),
+                  if (wide) ...[const SizedBox(height: 16), _desktopFooter()],
+                ],
+              ),
+            ),
+          );
+          return Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: wide ? 1440 : 760),
+              child: constraints.maxHeight < minHeight
+                  ? SingleChildScrollView(child: workspace)
+                  : workspace,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static const _labels = ['体型', '尾鳍', '纹样', '水彩', '名字'];
+  static const _icons = [
+    Icons.water_rounded,
+    Icons.air_rounded,
+    Icons.blur_on_rounded,
+    Icons.palette_outlined,
+    Icons.edit_outlined,
+  ];
+
+  Widget _desktopRail() => Align(
+    alignment: Alignment.centerLeft,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      decoration: _floatingSurface(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(
+          _labels.length,
+          (index) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: _ToolButton(
+              icon: _icons[index],
+              label: _labels[index],
+            selected: category == index,
+            prominent: true,
+            onTap: () => onCategoryChanged(index),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  BoxDecoration _floatingSurface() => BoxDecoration(
+    color: Tokens.primaryBg.withValues(alpha: .94),
+    borderRadius: BorderRadius.circular(24),
+    border: Border.all(color: Tokens.tankGlow.withValues(alpha: .3)),
+  );
+
+  Widget _desktopFooter() => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 760),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: _floatingSurface(),
+        child: Row(
+          children: [
+            const Icon(Icons.water_rounded, color: Tokens.tankGlowSoft),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                appearance.summary,
+                style: const TextStyle(color: Tokens.text, fontSize: 14),
+              ),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(width: 300, child: _finishButton()),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _finishButton() => SizedBox(
+    width: double.infinity,
+    height: 52,
+    child: FilledButton.icon(
+      key: const Key('save-custom-fish'),
+      onPressed: finishEnabled && !isFinishing ? onFinish : null,
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFFD4BFFF),
+        foregroundColor: const Color(0xFF332356),
+        disabledBackgroundColor: Tokens.surface,
+        disabledForegroundColor: Tokens.textDim,
+      ),
+      icon: isFinishing
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.auto_awesome_rounded),
+      label: Text(finishLabel),
+    ),
+  );
+
+  Widget _adaptivePreview({bool immersive = false}) {
+    return Container(
+      key: const Key('studio-preview'),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: immersive ? Colors.transparent : const Color(0xFF07131D),
+        borderRadius: BorderRadius.circular(24),
+        border: immersive
+            ? null
+            : Border.all(color: Tokens.tankGlow.withValues(alpha: .32)),
+        image: immersive
+            ? null
+            : const DecorationImage(
+                image: AssetImage('assets/tank/studio_canvas.png'),
+                fit: BoxFit.cover,
+                opacity: .8,
+              ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(painter: _WaterRingsPainter()),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const _NaturalFitBadge(),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: CustomFishSprite(
+                        appearance: appearance,
+                        width: (constraints.maxWidth * .84).clamp(240.0, 640.0),
+                        patternTuning: CustomFishPatternTuning(
+                          density: patternDensity,
+                          softness: patternSoftness,
+                          individualSeed: individualSeed,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    appearance.summary,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Tokens.tankGlowSoft,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (showIndividualVariation)
+                    TextButton.icon(
+                      onPressed: onVariationRequested,
+                      icon: const Icon(Icons.casino_outlined, size: 18),
+                      label: const Text('每条都不同 · 换个个体'),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _adaptiveTools({bool desktop = false}) {
+    const labels = ['体型', '尾鳍', '纹样', '水彩', '名字'];
+    const icons = [
+      Icons.water_rounded,
+      Icons.air_rounded,
+      Icons.blur_on_rounded,
+      Icons.palette_outlined,
+      Icons.edit_outlined,
+    ];
+    return Container(
+      key: const Key('studio-controls'),
+      padding: const EdgeInsets.all(16),
+      decoration: _floatingSurface(),
+      child: Column(
+        children: [
+          if (desktop)
+            Row(
+              children: [
+                Icon(icons[category], color: Tokens.tankGlowSoft),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(labels[category], style: const TextStyle(color: Tokens.text,
+                      fontSize: 18, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(const ['调整鱼身的自然轮廓', '让尾鳍轻盈舒展',
+                      '为鱼选择独特的纹路', '选择你喜欢的水彩',
+                      '给新伙伴一个名字'][category],
+                      style: const TextStyle(color: Tokens.textDim, fontSize: 12)),
+                  ],
+                )),
+              ],
+            )
+          else
+            Row(
+              children: List.generate(
+                labels.length,
+                (index) => Expanded(
+                  child: _ToolButton(
+                    icon: icons[index],
+                    label: labels[index],
+                      selected: category == index,
+                      prominent: true,
+                    onTap: () => onCategoryChanged(index),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const Key('studio-options-scroll'),
+              child: switch (category) {
+                0 => _CompactChips<CustomFishBody>(
+                  items: customFishBodies,
+                  selectedIndex: bodyIndex,
+                  labelOf: (item) => item.label,
+                  onSelected: onBodyChanged,
+                ),
+                1 => _CompactChips<CustomFishTail>(
+                  items: customFishTails,
+                  selectedIndex: tailIndex,
+                  labelOf: (item) => item.label,
+                  onSelected: onTailChanged,
+                ),
+                2 => _StudioPatternPanel(
+                  appearance: appearance,
+                  selectedIndex: patternIndex,
+                  onSelected: onPatternChanged,
+                  density: patternDensity,
+                  softness: patternSoftness,
+                  individualSeed: individualSeed,
+                  onDensityChanged: onPatternDensityChanged,
+                  onSoftnessChanged: onPatternSoftnessChanged,
+                  useGrid: desktop,
+                  largeCards: true,
+                ),
+                3 => _ColorChoices(
+                  selectedIndex: colorIndex,
+                  onSelected: onColorChanged,
+                  compact: true,
+                ),
+                _ => TextField(
+                  key: const Key('custom-fish-name'),
+                  controller: nameController,
+                  maxLength: 20,
+                  style: const TextStyle(color: Tokens.text),
+                  onChanged: onNameChanged,
+                  decoration: _prototypeInputDecoration(
+                    '给它起个名字',
+                    errorText: nameError,
+                  ),
+                ),
+              },
+            ),
+          ),
+          if (!desktop) ...[const SizedBox(height: 12), _finishButton()],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     const labels = ['体型', '尾鳍', '纹样', '水彩', '名字'];
+    if (adaptiveLayout) return _adaptiveStudio(context);
     const icons = [
       Icons.water_rounded,
       Icons.air_rounded,
@@ -1169,6 +1520,8 @@ class _StudioPatternPanel extends StatelessWidget {
     required this.individualSeed,
     required this.onDensityChanged,
     required this.onSoftnessChanged,
+    this.useGrid = false,
+    this.largeCards = false,
   });
 
   final CustomFishAppearance appearance;
@@ -1179,9 +1532,130 @@ class _StudioPatternPanel extends StatelessWidget {
   final int individualSeed;
   final ValueChanged<double> onDensityChanged;
   final ValueChanged<double> onSoftnessChanged;
+  final bool useGrid;
+  final bool largeCards;
+
+  Widget _tile(int index) {
+    final item = customFishPatterns[index];
+    final selected = index == selectedIndex;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${item.label}纹样',
+      child: InkWell(
+        key: ValueKey('studio-pattern-${item.id}'),
+        onTap: () => onSelected(index),
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: selected
+                ? Tokens.tankGlow.withValues(alpha: .18)
+                : Tokens.surface.withValues(alpha: .7),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? Tokens.tankGlowSoft
+                  : Tokens.tankGlow.withValues(alpha: .2),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: CustomFishSprite(
+                      appearance: CustomFishAppearance(
+                        body: appearance.body,
+                        tail: appearance.tail,
+                        pattern: item.id,
+                        color: appearance.color,
+                      ),
+                      width: 130,
+                      patternTuning: CustomFishPatternTuning(
+                        density: density,
+                        softness: softness,
+                        individualSeed: individualSeed,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                item.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: selected ? Tokens.text : Tokens.textDim,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (largeCards) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (useGrid)
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisExtent: 104,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+              ),
+              itemCount: customFishPatterns.length,
+              itemBuilder: (_, index) => _tile(index),
+            )
+          else
+            SizedBox(
+              height: 104,
+              child: ScrollConfiguration(
+                behavior: const MaterialScrollBehavior().copyWith(
+                  dragDevices: const {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse,
+                    PointerDeviceKind.stylus,
+                  },
+                ),
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: customFishPatterns.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (_, index) =>
+                      SizedBox(width: 108, child: _tile(index)),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          _NaturalPatternSlider(
+            label: '疏密',
+            value: density,
+            semanticsLabel: '纹样疏密',
+            onChanged: onDensityChanged,
+          ),
+          const SizedBox(height: 4),
+          _NaturalPatternSlider(
+            label: '柔和度',
+            value: softness,
+            semanticsLabel: '纹样边缘柔和度',
+            onChanged: onSoftnessChanged,
+          ),
+        ],
+      );
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1544,12 +2018,14 @@ class _ToolButton extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.prominent = false,
   });
 
   final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
@@ -1557,13 +2033,19 @@ class _ToolButton extends StatelessWidget {
       key: ValueKey('studio-tool-$label'),
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: EdgeInsets.symmetric(horizontal: 5, vertical: prominent ? 9 : 7),
+        decoration: BoxDecoration(
+          color: prominent && selected ? Tokens.tankGlow.withValues(alpha: .12) : null,
+          borderRadius: BorderRadius.circular(14),
+          border: prominent && selected ? Border.all(color: Tokens.tankGlowSoft) : null,
+        ),
         child: Column(
           children: [
             Icon(
               icon,
-              size: 19,
+              size: prominent ? 22 : 19,
               color: selected ? Tokens.tankGlowSoft : Tokens.textDim,
             ),
             const SizedBox(height: 3),
@@ -1571,7 +2053,7 @@ class _ToolButton extends StatelessWidget {
               label,
               style: TextStyle(
                 color: selected ? Tokens.text : Tokens.textDim,
-                fontSize: 10,
+                fontSize: prominent ? 12 : 10,
               ),
             ),
           ],

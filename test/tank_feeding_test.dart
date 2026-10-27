@@ -7,6 +7,30 @@ import 'package:yopet/features/fish/fish_providers.dart';
 import 'package:yopet/features/fish/fish_repository.dart';
 
 void main() {
+  testWidgets('remounting after companion mode does not replay an old meal', (
+    tester,
+  ) async {
+    Widget scene(int token) => MaterialApp(
+      home: SizedBox(
+        width: 400,
+        height: 400,
+        child: TankFeedingAnimation(token: token),
+      ),
+    );
+    await tester.pumpWidget(scene(0));
+    await tester.pumpWidget(scene(1));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(LayoutBuilder), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(scene(1));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(LayoutBuilder), findsNothing);
+    await tester.pumpWidget(scene(2));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(LayoutBuilder), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('summarises the tank and delegates one shared feeding action', (
     tester,
   ) async {
@@ -53,7 +77,8 @@ void main() {
 
     expect(find.text('大家都吃得很满足'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(find.byKey(const Key('feed-tank-confirm')))
+      tester
+          .widget<FilledButton>(find.byKey(const Key('feed-tank-confirm')))
           .onPressed,
       isNull,
     );
@@ -116,13 +141,16 @@ class _FishFixture {
 }
 
 class _FakeFishRepository implements FishRepository {
+  @override
+  Future<void> updatePersonality(
+    String fishId,
+    List<PersonalityTrait> traits,
+  ) async {}
   final fedTankIds = <String>[];
 
   @override
-  Future<FishCatalog> fetchCatalog() async => const FishCatalog(
-    species: [],
-    traits: [],
-  );
+  Future<FishCatalog> fetchCatalog() async =>
+      const FishCatalog(species: [], traits: []);
 
   @override
   Stream<List<FishInstance>> watchFish(String tankId) => const Stream.empty();

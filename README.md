@@ -39,6 +39,16 @@ flutter analyze
 flutter test
 ~~~
 
+或运行统一的本地验收入口（使用已安装依赖，不部署、不读取凭据、不重置数据库）：
+
+~~~powershell
+.\verify-local.ps1
+# 仅分析与测试：.\verify-local.ps1 -SkipWebBuild
+# Flutter 不在 PATH 时：.\verify-local.ps1 -FlutterPath 'D:\path\flutter.bat'
+~~~
+
+Web release 构建只验证编译，不代表已配置生产认证或可直接上线。
+
 数据库的迁移、种子数据与 pgTAP 测试以 `supabase/` 为唯一版本控制来源。在可丢弃的
 Supabase CLI 本地栈中执行：
 
@@ -58,4 +68,17 @@ supabase test db
 - [应用结构与平台目标](docs/setup/STRUCTURE.md)
 - [数据库工作流](docs/setup/database-workflow.md)
 - [生产认证检查表](docs/setup/production-auth.md)
+- [Windows 桌面测试说明](docs/setup/windows-testing.md)
 - [UI 设计说明](docs/design/ui-design.md)
+
+## Windows 本地测试包
+
+关闭正在运行的 Release 程序后执行 `./package-windows.ps1`。
+脚本先分析和测试，再构建并打包完整运行目录；`artifacts/` 中生成带时间戳的 zip
+与校验清单。此包连接本地开发后端，不是签名的生产安装包。
+
+## 性格陪伴互动（第一步）
+
+在鱼附近的空白水域点击，可轻唤最多两条鱼；回应具有性格化延迟、接近距离和停留。
+鱼图像仍打开档案，布景仍支持选择和编辑。轻唤有五秒冷却，不保存长期好感或互动历史。
+详见 [行为说明](docs/specs/2026-10-06-companion-behavior.md)。

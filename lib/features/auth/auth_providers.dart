@@ -40,14 +40,18 @@ final currentUserProvider = Provider<User?>((ref) {
 /// `public.tanks` row updates push to the home screen instantly
 /// (the migration `alter publication supabase_realtime add table
 /// public.tanks;` registers the channel).
+final currentUserIdProvider = Provider<String?>(
+  (ref) => ref.watch(currentUserProvider.select((user) => user?.id)),
+);
+
 final tankStreamProvider = StreamProvider<Tank?>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return const Stream<Tank?>.empty();
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) return const Stream<Tank?>.empty();
   final client = getSupabase();
   return client
       .from('tanks')
       .stream(primaryKey: ['owner_id'])
-      .eq('owner_id', user.id)
+      .eq('owner_id', userId)
       .limit(1)
       .map((rows) => rows.isEmpty ? null : Tank.fromMap(rows.first))
       .asBroadcastStream();

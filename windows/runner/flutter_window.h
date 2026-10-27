@@ -3,8 +3,12 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+#include <flutter/encodable_value.h>
 
 #include <memory>
+#include <map>
+#include <string>
 
 #include "win32_window.h"
 
@@ -23,6 +27,16 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  bool EnterCompanion();
+  void RestoreCompanion();
+  bool PresentFrame(const flutter::EncodableMap& frame);
+  HWND overlay_ = nullptr;
+  std::map<std::string, HWND> fish_overlays_;
+  bool companion_ = false;
+  LONG_PTR saved_style_ = 0;
+  LONG_PTR saved_ex_style_ = 0;
+  WINDOWPLACEMENT saved_placement_{sizeof(WINDOWPLACEMENT)};
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> companion_channel_;
   // The project to run.
   flutter::DartProject project_;
 

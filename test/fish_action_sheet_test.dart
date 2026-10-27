@@ -19,10 +19,9 @@ void main() {
     expect(find.text('泡泡'), findsOneWidget);
     expect(find.text('金鱼 · 暖橙'), findsOneWidget);
     expect(find.text('幼鱼 · 来到鱼缸第 10 天'), findsOneWidget);
-    expect(find.textContaining('大胆'), findsWidgets);
-    expect(find.textContaining('好奇'), findsWidgets);
-    expect(find.textContaining('常游到水面'), findsOneWidget);
-    expect(find.textContaining('主动靠近看看'), findsOneWidget);
+    expect(find.text('热情小伙伴'), findsOneWidget);
+    expect(find.text('亲近 · 活泼 · 爱探索'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNothing);
   });
 
   testWidgets('shows the saved combination for a custom fish', (tester) async {

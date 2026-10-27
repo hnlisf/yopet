@@ -10,6 +10,40 @@ import 'package:yopet/features/fish/fish_repository.dart';
 import 'package:yopet/features/home/tank.dart';
 
 void main() {
+  testWidgets('desktop uses bounded cards and keeps adoption reachable', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FakeFishRepository();
+    await _pumpPicker(tester, repository);
+    expect(find.byKey(const Key('picker-desktop-layout')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('confirm-adoption'))).height,
+      52,
+    );
+    await tester.enterText(find.byType(TextField), '桌面泡泡');
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('picker-mobile-layout')), findsOneWidget);
+    await _scrollToBottom(tester);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '桌面泡泡',
+    );
+    expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(1024, 600);
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('confirm-adoption'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(repository.adoptedNames, ['桌面泡泡']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows 12 species, validates the name, and adopts', (
     tester,
   ) async {
@@ -94,6 +128,11 @@ final _tank = Tank(
 );
 
 class _FakeFishRepository implements FishRepository {
+  @override
+  Future<void> updatePersonality(
+    String fishId,
+    List<PersonalityTrait> traits,
+  ) async {}
   _FakeFishRepository({this.fishCount = 0});
 
   final int fishCount;

@@ -206,8 +206,8 @@ class _TankFeedingSheetState extends ConsumerState<TankFeedingSheet> {
 }
 
 /// A short visual acknowledgement after the owner has successfully fed the
-/// tank. It is intentionally non-blocking: fish continue their independent
-/// swimming paths underneath it.
+/// tank. It is intentionally non-blocking; the tank also signals each fish to
+/// approach its separate portion with a personality-specific delay.
 class TankFeedingAnimation extends StatefulWidget {
   const TankFeedingAnimation({required this.token, super.key});
 
@@ -228,7 +228,8 @@ class _TankFeedingAnimationState extends State<TankFeedingAnimation>
       vsync: this,
       duration: const Duration(milliseconds: 2200),
     );
-    if (widget.token > 0) _controller.forward();
+    // The initial token is a baseline, not a fresh meal. Mode switches remount
+    // this layer with the last token and must not replay historical feeding.
   }
 
   @override

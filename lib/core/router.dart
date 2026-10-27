@@ -40,15 +40,22 @@ final routerProvider = Provider<GoRouter>((ref) {
   const customFishPrototypePath = '/prototype/custom-fish-flow';
   const fishPatternsPrototypePath = '/prototype/fish-patterns';
   const weatherPreviewPath = '/preview/weather';
-  final launchRoute =
-      WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+  // Native Windows does not forward flutter run --route consistently. A
+  // debug-only launch override lets visual QA reach the real authenticated
+  // editors without changing capacity or touching the user's fish.
+  const debugLaunchRoute = String.fromEnvironment('YOPET_DEBUG_ROUTE');
+  final launchRoute = kDebugMode && debugLaunchRoute.isNotEmpty
+      ? debugLaunchRoute
+      : WidgetsBinding.instance.platformDispatcher.defaultRouteName;
   final launchUri = Uri.tryParse(launchRoute);
   final initialLocation =
       kDebugMode &&
           (launchUri?.path == prototypePath ||
               launchUri?.path == customFishPrototypePath ||
               launchUri?.path == fishPatternsPrototypePath ||
-              launchUri?.path == weatherPreviewPath)
+              launchUri?.path == weatherPreviewPath ||
+              launchUri?.path == '/custom-fish' ||
+              launchUri?.path == '/pick-fish')
       ? launchRoute
       : '/';
 

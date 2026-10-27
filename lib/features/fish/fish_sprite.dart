@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'fish_models.dart';
+import 'fish_fin_mesh.dart';
 
 class FishSprite extends StatelessWidget {
   const FishSprite({
@@ -9,6 +10,8 @@ class FishSprite extends StatelessWidget {
     this.growthStage = GrowthStage.adult,
     this.facingLeft = false,
     this.width = 120,
+    this.finPhase = 0,
+    this.finStrength = 0,
     super.key,
   });
 
@@ -17,6 +20,8 @@ class FishSprite extends StatelessWidget {
   final GrowthStage growthStage;
   final bool facingLeft;
   final double width;
+  final double finPhase;
+  final double finStrength;
 
   static double scaleForStage(GrowthStage stage) => switch (stage) {
     GrowthStage.fry => 0.44,
@@ -27,6 +32,18 @@ class FishSprite extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scale = scaleForStage(growthStage);
+    if (finStrength > 0 && !MediaQuery.disableAnimationsOf(context)) {
+      return Transform.flip(
+        flipX: facingLeft,
+        child: FishFinAsset(
+          assetPath: species.assetPathForStage(growthStage),
+          tint: variant.color,
+          width: width * scale,
+          phase: finPhase,
+          strength: finStrength,
+        ),
+      );
+    }
     final sprite = ColorFiltered(
       // `BlendMode.color` paints an opaque rectangle in Flutter Web. Modulate
       // keeps the PNG alpha channel intact while preserving watercolor light

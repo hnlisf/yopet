@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'fish_models.dart';
 import 'fish_sprite.dart';
+import 'fish_fin_mesh.dart';
 
 /// Renders a pre-illustrated, complete fish silhouette.
 ///
@@ -20,6 +21,8 @@ class CustomFishSprite extends StatelessWidget {
     this.width = 120,
     this.patternTuning = const CustomFishPatternTuning(),
     this.patternStudyDirection = 1,
+    this.finPhase = 0,
+    this.finStrength = 0,
     super.key,
   });
 
@@ -27,6 +30,8 @@ class CustomFishSprite extends StatelessWidget {
   final GrowthStage growthStage;
   final bool facingLeft;
   final double width;
+  final double finPhase;
+  final double finStrength;
   final CustomFishPatternTuning patternTuning;
 
   /// The approved watercolor art direction is 1. Direction 0 remains only
@@ -62,6 +67,8 @@ class CustomFishSprite extends StatelessWidget {
         color: tone.color,
         patternLayout: patternLayout,
         patternStudyDirection: patternStudyDirection,
+        finPhase: finPhase,
+        finStrength: finStrength,
       ),
     );
     return Transform.flip(flipX: facingLeft, child: artwork);
@@ -428,6 +435,8 @@ class _CompleteFishArtwork extends StatefulWidget {
     required this.color,
     required this.patternLayout,
     required this.patternStudyDirection,
+    required this.finPhase,
+    required this.finStrength,
   });
 
   final CustomFishCompleteSprite sprite;
@@ -436,12 +445,17 @@ class _CompleteFishArtwork extends StatefulWidget {
   final Color color;
   final CustomFishPatternLayout patternLayout;
   final int patternStudyDirection;
+  final double finPhase;
+  final double finStrength;
 
   @override
   State<_CompleteFishArtwork> createState() => _CompleteFishArtworkState();
 }
 
 class _CompleteFishArtworkState extends State<_CompleteFishArtwork> {
+  ui.Image? _animatedTexture;
+  int _textureGeneration = 0;
+  bool _texturePending = false;
   ui.Image? _sheet;
   ui.Image? _torsoMask;
   ImageStream? _sheetStream;
@@ -459,6 +473,24 @@ class _CompleteFishArtworkState extends State<_CompleteFishArtwork> {
   void didUpdateWidget(covariant _CompleteFishArtwork oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.sprite.assetPath != widget.sprite.assetPath ||
+        oldWidget.sprite.row != widget.sprite.row ||
+        oldWidget.bodyId != widget.bodyId ||
+        oldWidget.tailId != widget.tailId ||
+        oldWidget.color != widget.color ||
+        oldWidget.patternLayout.patternId != widget.patternLayout.patternId ||
+        oldWidget.patternLayout.markingDensity !=
+            widget.patternLayout.markingDensity ||
+        oldWidget.patternLayout.markingSoftness !=
+            widget.patternLayout.markingSoftness ||
+        oldWidget.patternLayout.markingPhase !=
+            widget.patternLayout.markingPhase ||
+        oldWidget.patternStudyDirection != widget.patternStudyDirection) {
+      _textureGeneration++;
+      _texturePending = false;
+      _animatedTexture?.dispose();
+      _animatedTexture = null;
+    }
+    if (oldWidget.sprite.assetPath != widget.sprite.assetPath ||
         oldWidget.sprite.torsoMaskAssetPath !=
             widget.sprite.torsoMaskAssetPath) {
       _removeListeners();
@@ -470,6 +502,8 @@ class _CompleteFishArtworkState extends State<_CompleteFishArtwork> {
 
   @override
   void dispose() {
+    _textureGeneration++;
+    _animatedTexture?.dispose();
     _removeListeners();
     super.dispose();
   }
@@ -509,6 +543,46 @@ class _CompleteFishArtworkState extends State<_CompleteFishArtwork> {
     final sheet = _sheet;
     final torsoMask = _torsoMask;
     if (sheet == null || torsoMask == null) return const SizedBox.expand();
+    if (widget.finStrength > 0 && !MediaQuery.disableAnimationsOf(context)) {
+      if (_animatedTexture == null && !_texturePending) {
+        _texturePending = true;
+        final generation = _textureGeneration;
+        final recorder = ui.PictureRecorder();
+        _CompleteFishPainter(
+          sheet: sheet,
+          torsoMask: torsoMask,
+          row: widget.sprite.row,
+          rows: widget.sprite.rows,
+          bodyId: widget.bodyId,
+          tailId: widget.tailId,
+          color: widget.color,
+          patternLayout: widget.patternLayout,
+          patternStudyDirection: widget.patternStudyDirection,
+        ).paint(Canvas(recorder), const Size(480, 320));
+        final picture = recorder.endRecording();
+        picture.toImage(480, 320).then((image) {
+          picture.dispose();
+          if (!mounted || generation != _textureGeneration) {
+            image.dispose();
+            return;
+          }
+          setState(() {
+            _animatedTexture = image;
+            _texturePending = false;
+          });
+        });
+      }
+      if (_animatedTexture != null) {
+        return CustomPaint(
+          painter: FishFinMeshPainter(
+            image: _animatedTexture!,
+            body: widget.patternLayout.bodyBounds,
+            phase: widget.finPhase,
+            strength: widget.finStrength,
+          ),
+        );
+      }
+    }
     return CustomPaint(
       painter: _CompleteFishPainter(
         sheet: sheet,
@@ -558,6 +632,11 @@ class _CompleteFishPainter extends CustomPainter {
       sourceHeight,
     );
     final destination = Offset.zero & size;
+    // The artwork has generous transparent padding. Exclude its outer pixel
+    // fringe: tiny sheet-edge alpha and filtered dstIn coverage can otherwise
+    // become a tint-coloured rectangular frame, especially on small tank fish.
+    canvas.save();
+    canvas.clipRect(destination.deflate(1), doAntiAlias: false);
     // The complete silhouette stays a single illustration. Isolating this
     // layer lets the fin membranes transmit the aquarium behind the fish
     // without punching holes in the rest of the scene.
@@ -644,6 +723,7 @@ class _CompleteFishPainter extends CustomPainter {
         Paint()..blendMode = BlendMode.dstIn,
       );
     }
+    canvas.restore();
     canvas.restore();
   }
 

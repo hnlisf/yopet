@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/theme/tokens.dart';
 import '../fish/custom_fish_sprite.dart';
 import '../fish/fish_models.dart';
+import '../fish/fish_repository.dart';
 import '../fish/fish_sprite.dart';
+import '../presence/personality_profile.dart';
 import 'satiety.dart';
 
 class FishActionSheet extends StatefulWidget {
@@ -14,6 +16,8 @@ class FishActionSheet extends StatefulWidget {
     this.species,
     this.variant,
     this.now,
+    this.availableTraits = const [],
+    this.onUpdatePersonality,
     super.key,
   });
 
@@ -23,12 +27,106 @@ class FishActionSheet extends StatefulWidget {
   final FishVariant? variant;
   final Future<void> Function() onRelease;
   final DateTime? now;
+  final List<PersonalityTrait> availableTraits;
+  final Future<void> Function(List<PersonalityTrait>)? onUpdatePersonality;
 
   @override
   State<FishActionSheet> createState() => _FishActionSheetState();
 }
 
 class _FishActionSheetState extends State<FishActionSheet> {
+  Future<void> _editPersonality() async {
+    final selected = widget.traits.map((t) => t.id).toSet();
+    var saving = false;
+    String? error;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('调整性格'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('选择一个性格。取消不会改变现有设置。'),
+                for (final preset in PersonalityProfile.presets)
+                  ListTile(
+                    title: Text(preset.name),
+                    subtitle: Text(preset.summary),
+                    trailing:
+                        selected.length == preset.legacyCodes.length &&
+                            widget.availableTraits
+                                .where((t) => selected.contains(t.id))
+                                .map((t) => t.code)
+                                .toSet()
+                                .containsAll(preset.legacyCodes)
+                        ? const Icon(Icons.check)
+                        : null,
+                    onTap: saving
+                        ? null
+                        : () => update(() {
+                            final traits = widget.availableTraits
+                                .where(
+                                  (t) => preset.legacyCodes.contains(t.code),
+                                )
+                                .toList();
+                            if (traits.length != preset.legacyCodes.length) {
+                              error = '性格目录暂未加载完整';
+                              return;
+                            }
+                            selected
+                              ..clear()
+                              ..addAll(traits.map((t) => t.id));
+                            error = null;
+                          }),
+                  ),
+                if (error != null) Text(error!),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final traits = widget.availableTraits
+                          .where((t) => selected.contains(t.id))
+                          .toList();
+                      if (!isValidPersonality(traits) ||
+                          PersonalityProfile.fromLegacy(
+                                traits.map((t) => t.code).toSet(),
+                              ) ==
+                              null) {
+                        update(() => error = '请选择一个性格');
+                        return;
+                      }
+                      update(() => saving = true);
+                      try {
+                        await widget.onUpdatePersonality!(traits);
+                        if (!dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+                        if (mounted) Navigator.pop(this.context);
+                      } catch (_) {
+                        if (dialogContext.mounted) {
+                          update(() {
+                            saving = false;
+                            error = '暂时没能保存，请再试一次';
+                          });
+                        }
+                      }
+                    },
+              child: Text(saving ? '保存中…' : '保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   var _releasing = false;
   String? _releaseError;
 
@@ -185,33 +283,29 @@ class _FishActionSheetState extends State<FishActionSheet> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (widget.traits.isEmpty)
+              if (PersonalityProfile.fromLegacy(
+                    widget.traits.map((t) => t.code).toSet(),
+                  )
+                  case final profile?)
+                ListTile(
+                  title: Text(profile.name),
+                  subtitle: Text(profile.summary),
+                ),
+              if (PersonalityProfile.fromLegacy(
+                    widget.traits.map((t) => t.code).toSet(),
+                  ) ==
+                  null)
                 const Text(
-                  '它正安静地适应这个鱼缸。',
+                  '保留原有性格，可通过“调整性格”选择一个新性格。',
                   style: TextStyle(color: Tokens.textDim),
-                )
-              else ...[
-                Column(
-                  children: widget.traits
-                      .map((trait) => _TraitCard(trait: trait))
-                      .toList(growable: false),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.traits
-                      .map(
-                        (trait) =>
-                            '${trait.nameZh}：${_traitDescription(trait.code)}',
-                      )
-                      .join('\n'),
-                  style: const TextStyle(
-                    color: Tokens.textDim,
-                    fontSize: 12,
-                    height: 1.65,
-                  ),
-                ),
-              ],
               const SizedBox(height: 20),
+              if (widget.onUpdatePersonality != null)
+                TextButton.icon(
+                  onPressed: _editPersonality,
+                  icon: const Icon(Icons.tune),
+                  label: const Text('调整性格'),
+                ),
               Row(
                 children: [
                   const Text(
@@ -350,38 +444,6 @@ class _FishPortrait extends StatelessWidget {
   }
 }
 
-class _TraitCard extends StatelessWidget {
-  const _TraitCard({required this.trait});
-
-  final PersonalityTrait trait;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: _traitDescription(trait.code),
-      child: Semantics(
-        label: '${trait.nameZh}，${_traitDescription(trait.code)}',
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Tokens.tankGlow.withValues(alpha: 0.11),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.28)),
-          ),
-          child: Text(
-            '${_traitIcon(trait.code)}  ${trait.nameZh}',
-            style: const TextStyle(
-              color: Tokens.tankGlowSoft,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 int _residentDays({required DateTime createdAt, required DateTime now}) {
   final elapsed = now.toUtc().difference(createdAt.toUtc()).inDays;
   return elapsed.clamp(0, 99999) + 1;
@@ -398,19 +460,3 @@ String _identityLabel(
   if (variant == null) return species.nameZh;
   return '${species.nameZh} · ${variant.label}';
 }
-
-String _traitIcon(String code) => switch (code) {
-  'bold' => '◉',
-  'shy' => '◌',
-  'curious' => '◇',
-  'lazy' => '～',
-  _ => '·',
-};
-
-String _traitDescription(String code) => switch (code) {
-  'bold' => '常游到水面，也会直接回应你的靠近',
-  'shy' => '偏爱缸底和布景附近，靠近时会游远一点',
-  'curious' => '容易被你的触碰吸引，会主动靠近看看',
-  'lazy' => '喜欢慢慢游，偶尔在水中安静停留',
-  _ => '它有自己的游动节奏',
-};

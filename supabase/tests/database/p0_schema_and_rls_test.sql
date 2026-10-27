@@ -134,7 +134,7 @@ insert into public.fish (
   null,
   null,
   '波浪纹回归测试',
-  array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid],
+  array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid, '5f19d1f0-14d0-4e6a-9d0e-1bf389850003'::uuid],
   'disc',
   'fan',
   'wave',

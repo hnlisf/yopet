@@ -10,8 +10,7 @@ enum WeatherCondition {
   fog,
   drizzle,
   rain,
-  snow,
-  storm;
+  snow;
 
   static WeatherCondition fromWmoCode(int code) => switch (code) {
     0 => WeatherCondition.clear,
@@ -21,7 +20,7 @@ enum WeatherCondition {
     51 || 53 || 55 || 56 || 57 => WeatherCondition.drizzle,
     61 || 63 || 65 || 66 || 67 || 80 || 81 || 82 => WeatherCondition.rain,
     71 || 73 || 75 || 77 || 85 || 86 => WeatherCondition.snow,
-    95 || 96 || 99 => WeatherCondition.storm,
+    95 || 96 || 99 => WeatherCondition.rain,
     _ => WeatherCondition.partlyCloudy,
   };
 
@@ -33,7 +32,6 @@ enum WeatherCondition {
     WeatherCondition.drizzle => '细雨',
     WeatherCondition.rain => '雨天',
     WeatherCondition.snow => '雪天',
-    WeatherCondition.storm => '雷雨',
   };
 
   IconData get icon => switch (this) {
@@ -44,7 +42,6 @@ enum WeatherCondition {
     WeatherCondition.drizzle ||
     WeatherCondition.rain => Icons.water_drop_outlined,
     WeatherCondition.snow => Icons.ac_unit_rounded,
-    WeatherCondition.storm => Icons.thunderstorm_outlined,
   };
 
   /// Relative activity, not a welfare score. A value below one only makes the
@@ -57,7 +54,6 @@ enum WeatherCondition {
     WeatherCondition.drizzle => 0.86,
     WeatherCondition.rain => 0.80,
     WeatherCondition.snow => 0.72,
-    WeatherCondition.storm => 0.76,
   };
 }
 
@@ -140,7 +136,6 @@ class WeatherSnapshot {
       WeatherCondition.drizzle => 51,
       WeatherCondition.rain => 63,
       WeatherCondition.snow => 73,
-      WeatherCondition.storm => 95,
     };
     return WeatherSnapshot(
       cityName: '效果预览',

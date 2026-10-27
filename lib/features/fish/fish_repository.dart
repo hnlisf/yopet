@@ -3,12 +3,14 @@ import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fish_models.dart';
+import '../presence/personality_profile.dart';
 
 class TankFullException implements Exception {
   const TankFullException();
 }
 
 abstract class FishRepository {
+  Future<void> updatePersonality(String fishId, List<PersonalityTrait> traits);
   Future<FishCatalog> fetchCatalog();
 
   Stream<List<FishInstance>> watchFish(String tankId);
@@ -65,12 +67,79 @@ List<String> selectRandomTraitIds(
   if (traits.isEmpty) {
     throw StateError('At least one personality trait is required');
   }
+  final profiles = PersonalityProfile.presets
+      .where(
+        (p) => p.legacyCodes.every((code) => traits.any((t) => t.code == code)),
+      )
+      .toList();
+  if (profiles.isNotEmpty) {
+    final profile = profiles[random.nextInt(profiles.length)];
+    return traits
+        .where((t) => profile.legacyCodes.contains(t.code))
+        .map((t) => t.id)
+        .toList(growable: false);
+  }
   final shuffled = List<PersonalityTrait>.of(traits)..shuffle(random);
-  final count = 1 + random.nextInt(min(3, shuffled.length));
-  return shuffled.take(count).map((trait) => trait.id).toList(growable: false);
+  final compatible = <PersonalityTrait>[];
+  for (final trait in shuffled) {
+    if (trait.code == 'bold' && compatible.any((t) => t.code == 'shy') ||
+        trait.code == 'shy' && compatible.any((t) => t.code == 'bold')) {
+      continue;
+    }
+    compatible.add(trait);
+  }
+  final count = 1 + random.nextInt(min(3, compatible.length));
+  return compatible
+      .take(count)
+      .map((trait) => trait.id)
+      .toList(growable: false);
+}
+
+bool isValidPersonality(List<PersonalityTrait> traits) {
+  final codes = traits.map((t) => t.code).toSet();
+  return traits.isNotEmpty &&
+      traits.length <= 3 &&
+      traits.map((t) => t.id).toSet().length == traits.length &&
+      !(codes.contains('bold') && codes.contains('shy'));
+}
+
+Map<String, dynamic> namedPersonalityPayload(List<PersonalityTrait> traits) {
+  final profile = PersonalityProfile.fromLegacy(
+    traits.map((t) => t.code).toSet(),
+  );
+  if (!isValidPersonality(traits) || profile == null) {
+    throw ArgumentError('Choose one named personality');
+  }
+  return {
+    'personality_code': profile.code,
+    'traits': traits.map((t) => t.id).toList(growable: false),
+  };
 }
 
 class SupabaseFishRepository implements FishRepository {
+  Map<String, dynamic> _randomNamedPersonality(List<PersonalityTrait> catalog) {
+    final ids = selectRandomTraitIds(catalog, _random).toSet();
+    return namedPersonalityPayload(
+      catalog.where((t) => ids.contains(t.id)).toList(),
+    );
+  }
+
+  @override
+  Future<void> updatePersonality(
+    String fishId,
+    List<PersonalityTrait> traits,
+  ) async {
+    if (!isValidPersonality(traits)) {
+      throw ArgumentError('Incompatible personality');
+    }
+    await _client
+        .from('fish')
+        .update(namedPersonalityPayload(traits))
+        .eq('id', fishId)
+        .select('id')
+        .single();
+  }
+
   SupabaseFishRepository(this._client, {Random? random})
     : _random = random ?? Random.secure();
 
@@ -177,7 +246,7 @@ class SupabaseFishRepository implements FishRepository {
             'species_id': species.id,
             'variant_id': variant.id,
             'name': normalizedName,
-            'traits': selectRandomTraitIds(availableTraits, _random),
+            ..._randomNamedPersonality(availableTraits),
           })
           .select()
           .single();
@@ -206,7 +275,7 @@ class SupabaseFishRepository implements FishRepository {
             'species_id': null,
             'variant_id': null,
             'name': normalizedName,
-            'traits': selectRandomTraitIds(availableTraits, _random),
+            ..._randomNamedPersonality(availableTraits),
             ...appearance.toInsertMap(),
           })
           .select()

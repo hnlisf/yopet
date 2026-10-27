@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../presence/personality_profile.dart';
 
 enum GrowthStage {
   fry,
@@ -353,6 +354,7 @@ class FishInstance {
     this.customAppearance,
     required this.name,
     required this.traitIds,
+    this.personalityCode,
     required this.growthStage,
     required this.satiety,
     required this.createdAt,
@@ -370,6 +372,7 @@ class FishInstance {
           : CustomFishAppearance.fromMap(map),
       name: map['name'] as String,
       traitIds: (map['traits'] as List).cast<String>(),
+      personalityCode: map['personality_code'] as String?,
       growthStage: GrowthStage.fromJson(map['growth_stage'] as String),
       satiety: map['satiety'] as int,
       createdAt: DateTime.parse(map['created_at'] as String),
@@ -384,6 +387,11 @@ class FishInstance {
   final CustomFishAppearance? customAppearance;
   final String name;
   final List<String> traitIds;
+  final String? personalityCode;
+  bool hasPersonalityTrait(PersonalityTrait trait) {
+    final named = PersonalityProfile.fromCode(personalityCode);
+    return named != null ? named.legacyCodes.contains(trait.code) : traitIds.contains(trait.id);
+  }
   final GrowthStage growthStage;
   final int satiety;
   final DateTime createdAt;

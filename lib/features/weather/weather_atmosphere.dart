@@ -22,7 +22,6 @@ class WeatherAtmosphere extends StatelessWidget {
       WeatherCondition.drizzle => const Color(0x245BA8B5),
       WeatherCondition.rain => const Color(0x345BA8B5),
       WeatherCondition.snow => const Color(0x26E8EEF2),
-      WeatherCondition.storm => const Color(0x2C6C6AA0),
     };
     return IgnorePointer(
       child: Stack(
@@ -68,8 +67,6 @@ class _WeatherTexturePainter extends CustomPainter {
         _paintRain(canvas, size, condition == WeatherCondition.drizzle);
       case WeatherCondition.snow:
         _paintSnow(canvas, size);
-      case WeatherCondition.storm:
-        _paintStorm(canvas, size);
     }
   }
 
@@ -138,21 +135,6 @@ class _WeatherTexturePainter extends CustomPainter {
       final y = size.height * ((index * 0.137 + 0.05) % 0.94);
       canvas.drawCircle(Offset(x, y), 1.2 + (index % 3) * 0.45, paint);
     }
-  }
-
-  void _paintStorm(Canvas canvas, Size size) {
-    final glow = Paint()
-      ..color = const Color(0xFFB6A8E6).withValues(alpha: 0.16);
-    canvas.drawCircle(Offset(size.width * 0.76, size.height * 0.18), 56, glow);
-    final paint = Paint()
-      ..color = const Color(0xFFB6A8E6).withValues(alpha: 0.32)
-      ..strokeWidth = 1.3;
-    final path = Path()
-      ..moveTo(size.width * 0.74, 0)
-      ..lineTo(size.width * 0.68, size.height * 0.15)
-      ..lineTo(size.width * 0.76, size.height * 0.15)
-      ..lineTo(size.width * 0.7, size.height * 0.3);
-    canvas.drawPath(path, paint);
   }
 
   @override

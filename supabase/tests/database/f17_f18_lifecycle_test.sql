@@ -83,7 +83,7 @@ insert into public.fish (
     'goldfish',
     'goldfish_classic',
     'F17 饥饿鱼',
-    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid],
+    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid, '5f19d1f0-14d0-4e6a-9d0e-1bf389850003'::uuid],
     40,
     null,
     null,
@@ -95,7 +95,7 @@ insert into public.fish (
     'goldfish',
     'goldfish_classic',
     'F17 接近饱腹鱼',
-    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid],
+    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid, '5f19d1f0-14d0-4e6a-9d0e-1bf389850003'::uuid],
     90,
     null,
     null,
@@ -107,7 +107,7 @@ insert into public.fish (
     null,
     null,
     'F18 送别测试鱼',
-    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid],
+    array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid, '5f19d1f0-14d0-4e6a-9d0e-1bf389850003'::uuid],
     100,
     'disc',
     'fan',
@@ -126,7 +126,7 @@ insert into public.fish (
   'goldfish',
   'goldfish_classic',
   'F18 其他人的鱼',
-  array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid]
+  array['5f19d1f0-14d0-4e6a-9d0e-1bf389850001'::uuid, '5f19d1f0-14d0-4e6a-9d0e-1bf389850003'::uuid]
 );
 
 select set_config(

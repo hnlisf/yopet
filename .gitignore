@@ -55,3 +55,14 @@ android/key.properties
 supabase/.branches/
 supabase/.temp/
 supabase/.env
+
+# Generated local test bundles (source packaging script remains tracked).
+artifacts/yopet-windows-local-*.zip
+artifacts/yopet-windows-local-*.zip.json
+artifacts/private-db-backups/
+.scratch/
+flutter_*.log
+artifacts/yopet-windows-local-*/
+artifacts/installer-stage-*/
+artifacts/yopet-windows-local-setup-*.exe
+artifacts/yopet-windows-local-setup-*.exe.json

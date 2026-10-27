@@ -73,153 +73,424 @@ class _FishPickerScreenState extends ConsumerState<FishPickerScreen> {
         );
         final fishCount = fishAsync.value?.length ?? 0;
         final full = fishCount >= 5;
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-              sliver: SliverList.list(
-                children: [
-                  _PickerHeader(
-                    count: fishCount,
-                    onBack: () => context.go('/home'),
-                  ),
-                  const SizedBox(height: 20),
-                  _Preview(species: species, variant: variant),
-                  const SizedBox(height: 28),
-                  const _SectionTitle(
-                    index: '01',
-                    title: '选一个熟悉的轮廓',
-                    caption: '保留真实鱼种辨识度，再加一点想象。',
-                  ),
-                  const SizedBox(height: 14),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 0.9,
-                        ),
-                    itemCount: catalog.species.length,
-                    itemBuilder: (context, index) {
-                      final item = catalog.species[index];
-                      final selected = item.id == species.id;
-                      return _SpeciesTile(
-                        species: item,
-                        selected: selected,
-                        onTap: () => setState(() {
-                          _speciesId = item.id;
-                          _variantId = item.variants.first.id;
-                        }),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  _CustomFishEntry(onTap: () => context.go('/custom-fish')),
-                  const SizedBox(height: 28),
-                  const _SectionTitle(
-                    index: '02',
-                    title: '挑一种水彩',
-                    caption: '每种颜色都沿用同一个鱼种轮廓。',
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: species.variants
-                        .map(
-                          (item) => _VariantChip(
-                            variant: item,
-                            selected: item.id == variant.id,
-                            onTap: () => setState(() => _variantId = item.id),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 960) {
+              return _desktopPicker(
+                tankId,
+                catalog,
+                species,
+                variant,
+                fishCount,
+              );
+            }
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: CustomScrollView(
+                  key: const Key('picker-mobile-layout'),
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                      sliver: SliverList.list(
+                        children: [
+                          _PickerHeader(
+                            count: fishCount,
+                            onBack: () => context.go('/home'),
                           ),
-                        )
-                        .toList(growable: false),
-                  ),
-                  const SizedBox(height: 28),
-                  const _SectionTitle(
-                    index: '03',
-                    title: '给它一个名字',
-                    caption: '确认后会随机获得 1–3 个不重复的性格。',
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: _nameController,
-                    maxLength: 20,
-                    textInputAction: TextInputAction.done,
-                    style: const TextStyle(color: Tokens.text),
-                    decoration: InputDecoration(
-                      hintText: '例如：泡泡',
-                      hintStyle: const TextStyle(color: Tokens.textDim),
-                      errorText: _nameError,
-                      counterStyle: const TextStyle(color: Tokens.textDim),
-                      filled: true,
-                      fillColor: Tokens.surface.withValues(alpha: 0.84),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide(
-                          color: Tokens.tankGlow.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: const BorderSide(color: Tokens.tankGlow),
-                      ),
-                    ),
-                    onChanged: (_) {
-                      if (_nameError != null) setState(() => _nameError = null);
-                    },
-                    onSubmitted: (_) {
-                      if (!full && !_saving) {
-                        _adopt(tankId, catalog, species, variant);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: full ? () => _showFullMessage(context) : null,
-                    child: SizedBox(
-                      height: 54,
-                      child: FilledButton.icon(
-                        key: const Key('confirm-adoption'),
-                        onPressed: full || _saving
-                            ? null
-                            : () => _adopt(tankId, catalog, species, variant),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Tokens.tankGlowSoft,
-                          disabledBackgroundColor: Tokens.surface,
-                          foregroundColor: Tokens.primaryBg,
-                          disabledForegroundColor: Tokens.textDim,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                          const SizedBox(height: 20),
+                          _Preview(species: species, variant: variant),
+                          const SizedBox(height: 28),
+                          const _SectionTitle(
+                            index: '01',
+                            title: '选一个熟悉的轮廓',
+                            caption: '保留真实鱼种辨识度，再加一点想象。',
                           ),
-                        ),
-                        icon: _saving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Tokens.primaryBg,
+                          const SizedBox(height: 14),
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 190,
+                                  mainAxisExtent: 140,
+                                  mainAxisSpacing: 10,
+                                  crossAxisSpacing: 10,
                                 ),
-                              )
-                            : const Icon(Icons.add_rounded),
-                        label: Text(full ? '鱼缸住满了（5 / 5）' : '让它游进鱼缸'),
+                            itemCount: catalog.species.length,
+                            itemBuilder: (context, index) {
+                              final item = catalog.species[index];
+                              final selected = item.id == species.id;
+                              return _SpeciesTile(
+                                species: item,
+                                selected: selected,
+                                onTap: () => setState(() {
+                                  _speciesId = item.id;
+                                  _variantId = item.variants.first.id;
+                                }),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 18),
+                          _CustomFishEntry(
+                            onTap: () => context.go('/custom-fish'),
+                          ),
+                          const SizedBox(height: 28),
+                          const _SectionTitle(
+                            index: '02',
+                            title: '挑一种水彩',
+                            caption: '每种颜色都沿用同一个鱼种轮廓。',
+                          ),
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: species.variants
+                                .map(
+                                  (item) => _VariantChip(
+                                    variant: item,
+                                    selected: item.id == variant.id,
+                                    onTap: () =>
+                                        setState(() => _variantId = item.id),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                          const SizedBox(height: 28),
+                          const _SectionTitle(
+                            index: '03',
+                            title: '给它一个名字',
+                            caption: '确认后会随机获得 1–3 个不重复的性格。',
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: _nameController,
+                            maxLength: 20,
+                            textInputAction: TextInputAction.done,
+                            style: const TextStyle(color: Tokens.text),
+                            decoration: InputDecoration(
+                              hintText: '例如：泡泡',
+                              hintStyle: const TextStyle(color: Tokens.textDim),
+                              errorText: _nameError,
+                              counterStyle: const TextStyle(
+                                color: Tokens.textDim,
+                              ),
+                              filled: true,
+                              fillColor: Tokens.surface.withValues(alpha: 0.84),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: BorderSide(
+                                  color: Tokens.tankGlow.withValues(alpha: 0.2),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(18),
+                                borderSide: const BorderSide(
+                                  color: Tokens.tankGlow,
+                                ),
+                              ),
+                            ),
+                            onChanged: (_) {
+                              if (_nameError != null) {
+                                setState(() => _nameError = null);
+                              }
+                            },
+                            onSubmitted: (_) {
+                              if (!full && !_saving) {
+                                _adopt(tankId, catalog, species, variant);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 18),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: full
+                                ? () => _showFullMessage(context)
+                                : null,
+                            child: SizedBox(
+                              height: 54,
+                              child: FilledButton.icon(
+                                key: const Key('confirm-adoption'),
+                                onPressed: full || _saving
+                                    ? null
+                                    : () => _adopt(
+                                        tankId,
+                                        catalog,
+                                        species,
+                                        variant,
+                                      ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Tokens.tankGlowSoft,
+                                  disabledBackgroundColor: Tokens.surface,
+                                  foregroundColor: Tokens.primaryBg,
+                                  disabledForegroundColor: Tokens.textDim,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                icon: _saving
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Tokens.primaryBg,
+                                        ),
+                                      )
+                                    : const Icon(Icons.add_rounded),
+                                label: Text(full ? '鱼缸住满了（5 / 5）' : '让它游进鱼缸'),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _desktopPicker(
+    String tankId,
+    FishCatalog catalog,
+    FishSpecies species,
+    FishVariant variant,
+    int fishCount,
+  ) {
+    final full = fishCount >= 5;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1440),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final content = SizedBox(
+              height: constraints.maxHeight.clamp(620.0, double.infinity),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    _PickerHeader(
+                      count: fishCount,
+                      onBack: () => context.go('/home'),
+                    ),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: Row(
+                        key: const Key('picker-desktop-layout'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: _Preview(
+                                    species: species,
+                                    variant: variant,
+                                    enlarged: true,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const _SectionTitle(
+                                  index: '01',
+                                  title: '选一个熟悉的轮廓',
+                                  caption: '保留真实鱼种辨识度，再加一点想象。',
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 280,
+                                  child: GridView.builder(
+                                    key: const Key('picker-species-grid'),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                                          maxCrossAxisExtent: 180,
+                                          mainAxisExtent: 128,
+                                          mainAxisSpacing: 12,
+                                          crossAxisSpacing: 12,
+                                        ),
+                                    itemCount: catalog.species.length,
+                                    itemBuilder: (_, index) {
+                                      final item = catalog.species[index];
+                                      return _SpeciesTile(
+                                        species: item,
+                                        selected: item.id == species.id,
+                                        onTap: () => setState(() {
+                                          _speciesId = item.id;
+                                          _variantId = item.variants.first.id;
+                                        }),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          SizedBox(
+                            width: 340,
+                            child: Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Tokens.surface.withValues(alpha: .7),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: Tokens.tankGlow.withValues(alpha: .3),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            species.nameZh,
+                                            style: const TextStyle(
+                                              color: Tokens.text,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 24),
+                                          const _SectionTitle(
+                                            index: '02',
+                                            title: '挑一种水彩',
+                                            caption: '每种颜色都沿用同一个鱼种轮廓。',
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Wrap(
+                                            spacing: 10,
+                                            runSpacing: 10,
+                                            children: species.variants
+                                                .map(
+                                                  (item) => _VariantChip(
+                                                    variant: item,
+                                                    selected:
+                                                        item.id == variant.id,
+                                                    onTap: () => setState(
+                                                      () =>
+                                                          _variantId = item.id,
+                                                    ),
+                                                  ),
+                                                )
+                                                .toList(),
+                                          ),
+                                          const SizedBox(height: 28),
+                                          const _SectionTitle(
+                                            index: '03',
+                                            title: '给它一个名字',
+                                            caption: '确认后会随机获得 1–3 个不重复的性格。',
+                                          ),
+                                          const SizedBox(height: 14),
+                                          TextField(
+                                            controller: _nameController,
+                                            maxLength: 20,
+                                            style: const TextStyle(
+                                              color: Tokens.text,
+                                            ),
+                                            decoration: InputDecoration(
+                                              hintText: '例如：泡泡',
+                                              errorText: _nameError,
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                              ),
+                                            ),
+                                            onChanged: (_) {
+                                              if (_nameError != null) {
+                                                setState(
+                                                  () => _nameError = null,
+                                                );
+                                              }
+                                            },
+                                            onSubmitted: (_) {
+                                              if (!full && !_saving) {
+                                                _adopt(
+                                                  tankId,
+                                                  catalog,
+                                                  species,
+                                                  variant,
+                                                );
+                                              }
+                                            },
+                                          ),
+                                          const SizedBox(height: 28),
+                                          _CustomFishEntry(
+                                            onTap: () =>
+                                                context.go('/custom-fish'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: full
+                                        ? () => _showFullMessage(context)
+                                        : null,
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      height: 52,
+                                      child: FilledButton.icon(
+                                        key: const Key('confirm-adoption'),
+                                        onPressed: full || _saving
+                                            ? null
+                                            : () => _adopt(
+                                                tankId,
+                                                catalog,
+                                                species,
+                                                variant,
+                                              ),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFFD4BFFF,
+                                          ),
+                                          foregroundColor: const Color(
+                                            0xFF332356,
+                                          ),
+                                        ),
+                                        icon: _saving
+                                            ? const SizedBox.square(
+                                                dimension: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : const Icon(Icons.add_rounded),
+                                        label: Text(
+                                          full ? '鱼缸住满了（5 / 5）' : '让它游进鱼缸',
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+            return constraints.maxHeight < 620
+                ? SingleChildScrollView(child: content)
+                : content;
+          },
+        ),
+      ),
     );
   }
 
@@ -324,37 +595,49 @@ class _PickerHeader extends StatelessWidget {
 }
 
 class _Preview extends StatelessWidget {
-  const _Preview({required this.species, required this.variant});
+  const _Preview({
+    required this.species,
+    required this.variant,
+    this.enlarged = false,
+  });
 
   final FishSpecies species;
   final FishVariant variant;
+  final bool enlarged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 190,
+      height: enlarged ? double.infinity : 190,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF102838), Color(0xFF153747)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF102838),
         border: Border.all(color: Tokens.tankGlow.withValues(alpha: 0.18)),
       ),
       child: Stack(
         children: [
           Positioned.fill(
             child: Opacity(
-              opacity: 0.2,
+              opacity: enlarged ? .8 : .4,
               child: Image.asset(
-                'assets/tank/background.png',
+                'assets/tank/studio_canvas.png',
                 fit: BoxFit.cover,
               ),
             ),
           ),
           Center(
-            child: FishSprite(species: species, variant: variant, width: 175),
+            child: LayoutBuilder(
+              builder: (_, constraints) => FittedBox(
+                fit: BoxFit.contain,
+                child: FishSprite(
+                  species: species,
+                  variant: variant,
+                  width: enlarged
+                      ? (constraints.maxWidth * .65).clamp(240.0, 480.0)
+                      : 175,
+                ),
+              ),
+            ),
           ),
           Positioned(
             left: 18,
@@ -447,10 +730,15 @@ class _SpeciesTile extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Expanded(
-              child: FishSprite(
-                species: species,
-                variant: species.variants.first,
-                width: 82,
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: FishSprite(
+                    species: species,
+                    variant: species.variants.first,
+                    width: 128,
+                  ),
+                ),
               ),
             ),
             Text(

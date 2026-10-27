@@ -85,9 +85,9 @@ class _CustomFishScreenState extends ConsumerState<CustomFishScreen> {
     return ColoredBox(
       color: const Color(0xFF07131D),
       child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
+        child: SizedBox.expand(
           child: CustomFishStudio(
+            adaptiveLayout: true,
             appearance: _appearance,
             category: _studioCategory,
             bodyIndex: _bodyIndex,

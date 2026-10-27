@@ -9,7 +9,7 @@ void main() {
     expect(WeatherCondition.fromWmoCode(45), WeatherCondition.fog);
     expect(WeatherCondition.fromWmoCode(63), WeatherCondition.rain);
     expect(WeatherCondition.fromWmoCode(73), WeatherCondition.snow);
-    expect(WeatherCondition.fromWmoCode(95), WeatherCondition.storm);
+    expect(WeatherCondition.fromWmoCode(95), WeatherCondition.rain);
     expect(WeatherCondition.clear.labelZh(isDay: false), '晴夜');
   });
 

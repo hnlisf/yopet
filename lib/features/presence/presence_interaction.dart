@@ -5,6 +5,17 @@ import 'package:flutter/material.dart';
 /// The absence required before a fish acknowledges a returning player.
 const presenceGreetingThreshold = Duration(minutes: 10);
 
+/// Evaluate a loaded tank once, not each realtime update or build.
+class StartupGreetingGate {
+  bool _checked = false;
+  bool check(Iterable<DateTime> lastSeenTimes, DateTime now) {
+    if (_checked || lastSeenTimes.isEmpty) return false;
+    _checked = true;
+    final mostRecent = lastSeenTimes.reduce((a, b) => a.isAfter(b) ? a : b);
+    return shouldGreetAfterAbsence(lastSeenAt: mostRecent, now: now);
+  }
+}
+
 enum FishReaction { curious, shy, lazy, bold, greeting }
 
 /// Resolves a fish's single, predictable response when it has multiple traits.
@@ -74,9 +85,17 @@ class FishTapInteraction {
     required this.id,
     required this.fishId,
     required this.position,
+    this.companionIds = const {},
+    this.isCall = false,
+    this.isFollow = false,
+    this.isCompany = false,
   });
 
   final int id;
   final String fishId;
   final Alignment position;
+  final Set<String> companionIds;
+  final bool isCall;
+  final bool isFollow;
+  final bool isCompany;
 }

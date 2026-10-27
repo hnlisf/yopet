@@ -191,6 +191,7 @@ class _DecorationSheetState extends ConsumerState<DecorationSheet> {
       await ref
           .read(decorationRepositoryProvider)
           .placeDecoration(tankId: widget.tankId, decoration: decoration);
+      if (mounted) ref.invalidate(tankDecorationsProvider(widget.tankId));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -208,6 +209,7 @@ class _DecorationSheetState extends ConsumerState<DecorationSheet> {
       await ref
           .read(decorationRepositoryProvider)
           .removeDecoration(background.id);
+      if (mounted) ref.invalidate(tankDecorationsProvider(widget.tankId));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(

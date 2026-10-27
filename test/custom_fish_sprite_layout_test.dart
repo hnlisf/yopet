@@ -8,6 +8,110 @@ import 'package:yopet/features/fish/custom_fish_sprite.dart';
 import 'package:yopet/features/fish/fish_models.dart';
 
 void main() {
+  testWidgets(
+    'animated pink fish keeps a transparent frame and visible torso',
+    (tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: RepaintBoundary(
+              key: key,
+              child: const CustomFishSprite(
+                appearance: CustomFishAppearance(
+                  body: 'disc',
+                  tail: 'fan',
+                  pattern: 'wave',
+                  color: 'pink',
+                ),
+                width: 108,
+                finPhase: 1.2,
+                finStrength: .8,
+              ),
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 150)),
+        );
+        await tester.pump();
+      }
+      final boundary =
+          key.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final image = (await tester.runAsync(
+        () => boundary.toImage(pixelRatio: 2),
+      ))!;
+      final rgba = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      var opaquePixels = 0;
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          final alpha = rgba.getUint8((y * image.width + x) * 4 + 3);
+          if (x == 0 || y == 0 || x == image.width - 1 || y == image.height - 1) {
+            expect(alpha, 0);
+          }
+          if (alpha > 128) opaquePixels++;
+        }
+      }
+      image.dispose();
+      expect(opaquePixels, greaterThan(500));
+    },
+  );
+  testWidgets('small pink tank fish has no rectangular compositing edge', (
+    tester,
+  ) async {
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: RepaintBoundary(
+            key: key,
+            child: const CustomFishSprite(
+              appearance: CustomFishAppearance(
+                body: 'diamond',
+                tail: 'ribbon',
+                pattern: 'cloud',
+                color: 'pink',
+              ),
+              width: 108,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pump();
+    final boundary =
+        key.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final image = (await tester.runAsync(
+      () => boundary.toImage(pixelRatio: 2),
+    ))!;
+    final rgba = (await tester.runAsync(
+      () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+    ))!;
+    var maximumAlpha = 0;
+    for (var y = 0; y < image.height; y++) {
+      for (var x = 0; x < image.width; x++) {
+        if (x != 0 && y != 0 && x != image.width - 1 && y != image.height - 1) {
+          continue;
+        }
+        final alpha = rgba.getUint8((y * image.width + x) * 4 + 3);
+        if (alpha > maximumAlpha) maximumAlpha = alpha;
+      }
+    }
+    image.dispose();
+    expect(
+      maximumAlpha,
+      0,
+      reason:
+          'The transparent sprite perimeter must not reveal a tint rectangle',
+    );
+  });
   test('every body and tail choice resolves to a complete sprite sheet', () {
     for (final body in customFishBodies) {
       for (final tail in customFishTails) {
